@@ -9,12 +9,14 @@ dist/
 .angular/
 coverage/
 
-# IDE
+# IDE / local tool state
 .vscode/*
 !.vscode/extensions.json
 .vs/
 *.user
 *.suo
+.codex
+.codex/
 
 # Env / secrets
 .env
