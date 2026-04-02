@@ -1,0 +1,16 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.2.1">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nexus.OrchestratorApi\Nexus.OrchestratorApi.csproj" />
+    <ProjectReference Include="..\Nexus.Mcp.Toolbelt\Nexus.Mcp.Toolbelt.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>1540223f-ba0c-4394-aff8-873c154cb47a</UserSecretsId>
+  </PropertyGroup>
+
+</Project>
