@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nexus.AppHost/Nexus.AppHost.csproj" />
+    <Project Path="src/Nexus.Contracts/Nexus.Contracts.csproj" />
+    <Project Path="src/Nexus.Mcp.Toolbelt/Nexus.Mcp.Toolbelt.csproj" />
+    <Project Path="src/Nexus.OrchestratorApi/Nexus.OrchestratorApi.csproj" />
+    <Project Path="src/Nexus.ServiceDefaults/Nexus.ServiceDefaults.csproj" />
+  </Folder>
+</Solution>
