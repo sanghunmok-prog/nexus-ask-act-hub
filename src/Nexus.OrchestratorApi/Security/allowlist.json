@@ -1,0 +1,35 @@
+{
+  "tables": {
+    "Orders": {
+      "select": [
+        "OrderId",
+        "CreatedAtUtc",
+        "Status",
+        "ExpectedShipDateUtc",
+        "ActualShipDateUtc",
+        "Carrier",
+        "DelayReason"
+      ],
+      "filter": [
+        "Status",
+        "ExpectedShipDateUtc",
+        "Carrier"
+      ],
+      "orderBy": [
+        "ExpectedShipDateUtc",
+        "CreatedAtUtc"
+      ],
+      "columnTypes": {
+        "OrderId": "int",
+        "CreatedAtUtc": "datetime",
+        "Status": "string",
+        "ExpectedShipDateUtc": "datetime",
+        "ActualShipDateUtc": "datetime",
+        "Carrier": "string",
+        "DelayReason": "string"
+      }
+    }
+  },
+  "maxLimit": 200,
+  "singleTableOnly": true
+}

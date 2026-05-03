@@ -1,107 +1,101 @@
 # API Contracts
 
-This file captures the repository contract for REST, SSE, and tool interfaces.
+This file captures the repository contract for REST, SSE, and query-shape interfaces.
+
+For current merged-state implementation conventions, also read `docs/IMPLEMENTATION_NOTES.md`.
 
 ## Orchestrator REST endpoints
-- POST /api/chat/stream
-- GET /api/approvals/pending
-- POST /api/approvals/{id}/approve
-- POST /api/approvals/{id}/reject
-- GET /api/audit/recent
-- GET /api/audit?correlationId=...
-- POST /api/documents/upload
-- POST /api/documents/{docId}/ingest
-- GET /api/health
 
-## SSE event types
-- workflow.started
-- tool.call
-- tool.result
-- checkpoint.saved
-- approval.required
-- approval.status
-- workflow.resumed
-- assistant.message
-- error
-- done
+- `POST /api/chat/stream`
+- `GET /api/approvals/pending`
+- `POST /api/approvals/{id}/approve`
+- `POST /api/approvals/{id}/reject`
+- `GET /api/audit/recent`
+- `GET /api/audit?correlationId=...`
+- `POST /api/documents/upload`
+- `POST /api/documents/{docId}/ingest`
+- `GET /api/health`
 
-## Repository envelope decision
-Use a single event envelope shape for PR-03 and later:
+## Chat stream contract
+
+### Endpoint
+`POST /api/chat/stream`
+
+### Request body
+Current minimal request body:
 
 ```json
+{
+  "prompt": "Show delayed shipments last 30 days and the policy that applies."
+}
+Response transport
+Content-Type: text/event-stream
+This is a POST-based SSE endpoint
+The current frontend consumption pattern is fetch + ReadableStream
+Do not assume EventSource as the primary client for this endpoint because the current contract is POST-based
+SSE event types
+workflow.started
+tool.call
+tool.result
+checkpoint.saved
+approval.required
+approval.status
+workflow.resumed
+assistant.message
+error
+done
+Repository envelope decision
+
+Use a single event envelope shape:
+
 {
   "eventType": "workflow.started",
   "correlationId": "GUID",
   "timestampUtc": "2026-04-02T03:00:00Z",
   "payload": {}
 }
-```
-
-## Minimal payload guidance
-
-### workflow.started
-```json
+Minimal payload guidance
+workflow.started
 {
   "prompt": "Show delayed shipments..."
 }
-```
-
-### tool.call
-```json
+tool.call
 {
   "toolName": "docs.search",
   "sanitizedArgs": {
     "query": "delayed shipments policy",
-    "topK": 5
+    "topK": 3
   },
   "requiresApproval": false
 }
-```
-
-### tool.result
-```json
+tool.result
 {
   "toolName": "docs.search",
   "rowCount": 0,
-  "citationCount": 3,
-  "summary": "Top 3 policy chunks returned"
+  "citationCount": 1,
+  "summary": "Returned 1 mock policy citation"
 }
-```
-
-### checkpoint.saved
-```json
+checkpoint.saved
 {
   "checkpointId": "GUID",
   "approvalId": "GUID"
 }
-```
-
-### approval.required
-```json
+approval.required
 {
   "approvalId": "GUID",
   "toolName": "github.create_issue",
   "riskSummary": "Creates a GitHub issue in the configured repo"
 }
-```
-
-### approval.status
-```json
+approval.status
 {
   "approvalId": "GUID",
   "status": "Approved"
 }
-```
-
-### workflow.resumed
-```json
+workflow.resumed
 {
   "checkpointId": "GUID"
 }
-```
-
-### assistant.message
-```json
+assistant.message
 {
   "message": "Merged answer text",
   "citations": [
@@ -112,30 +106,33 @@ Use a single event envelope shape for PR-03 and later:
     }
   ]
 }
-```
-
-### error
-```json
+error
 {
   "code": "QUERY_VALIDATION_FAILED",
   "message": "Column is not allowlisted",
   "retryable": true
 }
-```
-
-### done
-```json
+done
 {
   "success": true
 }
-```
+Current minimal mock sequence (PR-03 / PR-04)
 
-## MCP tool contracts
+The current mock happy-path sequence is:
 
-### db.get_schema_summary
+workflow.started
+tool.call
+tool.result
+assistant.message
+done
+
+This is intentionally minimal for the current merged implementation.
+
+MCP tool contracts
+db.get_schema_summary
+
 Output:
 
-```json
 {
   "tables": [
     {
@@ -152,12 +149,12 @@ Output:
     }
   ]
 }
-```
+db.query_readonly
 
-### db.query_readonly
+The following StructuredQuery shape is locked for PR-05+ and should be treated as the authoritative query contract going forward.
+
 Input shape:
 
-```json
 {
   "table": "Orders",
   "select": [
@@ -168,28 +165,36 @@ Input shape:
     "Carrier"
   ],
   "filters": [
-    { "column": "Status", "op": "eq", "value": "Delayed" }
+    { "column": "Status", "op": "eq", "value": "Delayed" },
+    {
+      "column": "ExpectedShipDateUtc",
+      "op": "between",
+      "value": "2026-01-01T00:00:00Z",
+      "value2": "2026-01-31T23:59:59Z"
+    }
   ],
   "orderBy": [
     { "column": "ExpectedShipDateUtc", "dir": "desc" }
   ],
   "limit": 50
 }
-```
 
-### docs.search
+Locked conventions for this shape:
+
+filters combine with AND only
+limit is required
+value2 is used only for between
+docs.search
+
 Input:
 
-```json
 {
   "query": "delayed shipments policy",
   "topK": 5
 }
-```
 
 Output:
 
-```json
 {
   "results": [
     {
@@ -200,34 +205,27 @@ Output:
     }
   ]
 }
-```
+docs.get_chunk
 
-### docs.get_chunk
 Input:
 
-```json
 {
   "citationId": "doc-guid:12"
 }
-```
+github.create_issue
 
-### github.create_issue
 Input:
 
-```json
 {
   "repo": "org/repo",
   "title": "Delayed Shipments: 30-day review",
   "body": "...",
   "labels": ["nexus-demo"]
 }
-```
 
 Output:
 
-```json
 {
   "issueUrl": "https://github.com/.../issues/123",
   "issueNumber": 123
 }
-```
