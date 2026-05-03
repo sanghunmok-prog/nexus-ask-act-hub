@@ -7,26 +7,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  repo-sanity:
+  build-dotnet:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify repo skeleton
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore .NET solution
+        run: dotnet restore Nexus.slnx
+
+      - name: Build .NET solution
+        run: dotnet build Nexus.slnx --no-restore --configuration Release
+
+  build-web:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('src/Nexus.Web/package.json') != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install web dependencies
+        working-directory: src/Nexus.Web
         run: |
-          test -f README.md
-          test -f AGENTS.md
-          test -f docs/README.md
-          test -f docs/NEXUS_MASTER.md
-          test -f docs/API_CONTRACTS.md
-          test -f docs/SECURITY.md
-          test -f docs/DATA_MODEL.md
-          test -f docs/DEMO_SCRIPT.md
-          test -f .env.example
-          test -f .gitignore
-          test -f .github/workflows/ci.yml
-          test -d docs
-          test -d infra
-          test -d src
-          echo "PR-00 repo skeleton OK"
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build Angular app
+        working-directory: src/Nexus.Web
+        run: npm run build

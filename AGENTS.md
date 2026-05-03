@@ -1,16 +1,17 @@
 # AGENTS.md
 
-You are working in the NEXUS repository.
-
 ## Read first
+
 Before changing code, read:
 - README.md
+- docs/IMPLEMENTATION_NOTES.md
 - docs/NEXUS_MASTER.md
 - docs/API_CONTRACTS.md
 - docs/SECURITY.md
 - docs/DATA_MODEL.md
 
 ## Core behavior
+
 - Work on exactly one PR at a time.
 - Do not implement future PRs early.
 - Keep the implementation minimal, buildable, and testable.
@@ -20,7 +21,20 @@ Before changing code, read:
   2. exact build/run commands
   3. anything still manual or incomplete
 
+## Locked repository conventions
+
+- `Nexus.slnx` is the canonical .NET solution file.
+- `src/Nexus.Web` is the Angular app location.
+- The Angular app is in the same repo, but it is not a .NET solution project.
+- AppHost entry file is `src/Nexus.AppHost/AppHost.cs`.
+- `POST /api/chat/stream` is the current SSE endpoint.
+- Because the SSE contract is POST-based, the frontend consumes it via `fetch + ReadableStream`.
+- Local AppHost `/api/health` checks currently use the `http` endpoint.
+- StructuredQuery `between` uses `value` + `value2`.
+- If implementation conventions change, update the repo docs in the same PR.
+
 ## Scope locks
+
 Do NOT add any of the following unless explicitly requested:
 - OCR
 - multi-tenant SSO
@@ -31,7 +45,8 @@ Do NOT add any of the following unless explicitly requested:
 - broad autonomous agent behavior
 
 ## Product rules
-- Local development must support LLM_MODE=mock.
+
+- Local development must support `LLM_MODE=mock`.
 - Orchestrator owns approval decisions.
 - Toolbelt does not decide policy.
 - Read-only DB queries must use StructuredQuery + allowlist.
@@ -39,8 +54,10 @@ Do NOT add any of the following unless explicitly requested:
 - Always parameterize SQL values.
 - Do not display chain-of-thought in UI.
 - Trace may show tool names, sanitized args, durations, rowCount, citationCount.
+- PR-05 validates and compiles only; actual DB execution comes later.
 
 ## PR order
+
 - PR-00: Repo skeleton + docs + CI stub
 - PR-01: Aspire AppHost + ServiceDefaults + health endpoints
 - PR-02: SQL schema + seed scripts + EF migrations (if used)
@@ -61,6 +78,7 @@ Do NOT add any of the following unless explicitly requested:
 - PR-17: Azure deploy (azd) + final README + demo script
 
 ## Additional constraints
+
 - Do not add SQL schema before PR-02.
 - Do not add SSE chat before PR-03.
 - Do not add Angular chat UI before PR-04.

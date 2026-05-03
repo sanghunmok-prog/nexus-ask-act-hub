@@ -1,5 +1,21 @@
 # NEXUS Master Notes
 
+## Current Repository Implementation Note
+
+This file is the product and architecture blueprint.
+
+For current merged-state implementation conventions and current repo-level execution rules, also read `docs/IMPLEMENTATION_NOTES.md`.
+
+If this blueprint and the current repo code differ on implementation-level details such as:
+- solution file naming
+- Angular repo placement
+- AppHost entry file naming
+- current local dev conventions
+- current POST-based SSE frontend consumption
+
+follow `docs/IMPLEMENTATION_NOTES.md` and the repo code.
+
+
 ## Goal
 Build a portfolio-safe internal platform where users can:
 1. query SQL data and policy documents together
@@ -73,6 +89,7 @@ Build a portfolio-safe internal platform where users can:
 - README.md
 - docs/
   - NEXUS_MASTER.md
+  - IMPLEMENTATION_NOTES.md
   - API_CONTRACTS.md
   - SECURITY.md
   - DEMO_SCRIPT.md
