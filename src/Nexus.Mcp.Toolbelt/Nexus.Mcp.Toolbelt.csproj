@@ -5,6 +5,13 @@
     <ProjectReference Include="..\Nexus.Contracts\Nexus.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\Nexus.OrchestratorApi\Security\allowlist.json"
+             Link="Security\allowlist.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

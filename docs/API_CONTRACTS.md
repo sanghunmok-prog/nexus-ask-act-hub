@@ -131,6 +131,10 @@ This is intentionally minimal for the current merged implementation.
 MCP tool contracts
 db.get_schema_summary
 
+PR-06 local HTTP shim:
+
+`GET /api/tools/db/schema-summary`
+
 Output:
 
 {

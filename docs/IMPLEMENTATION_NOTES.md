@@ -250,3 +250,11 @@ Still out of scope through PR-05:
 - audit viewer
 - document upload
 - future PR work beyond the validator/compiler/test boundary
+
+## PR-06 Toolbelt schema summary convention
+
+- `src/Nexus.OrchestratorApi/Security/allowlist.json` remains the allowlist source of truth.
+- `src/Nexus.Mcp.Toolbelt` reads that existing allowlist through a project-file content link with copy-to-output / copy-to-publish.
+- The PR-06 local HTTP shim for `db.get_schema_summary` is `GET /api/tools/db/schema-summary`.
+- PR-06 projects allowlisted tables to table name plus allowlisted `select` columns only.
+- PR-06 does not execute SQL and does not implement `db.query_readonly`.
