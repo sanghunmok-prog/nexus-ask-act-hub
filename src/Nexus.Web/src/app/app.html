@@ -1,0 +1,47 @@
+<main class="app-shell">
+  <header class="page-header">
+    <p>NEXUS</p>
+    <h1>Chat and Trace</h1>
+  </header>
+
+  <section class="workspace" aria-label="Chat workspace">
+    <div class="panel">
+      <app-prompt-composer [active]="active()" (promptSubmitted)="send($event)" />
+
+      @if (error()) {
+        <p class="error" role="alert">{{ error() }}</p>
+      }
+
+      <section class="answer" aria-label="Assistant response">
+        <h2>Assistant</h2>
+        @if (finalMessage(); as message) {
+          <p>{{ message.message }}</p>
+          @if ((message.citations?.length ?? 0) > 0) {
+            <ul>
+              @for (citation of message.citations; track citation.citationId || $index) {
+                <li>
+                  <strong>{{ citation.sourceName || citation.citationId || 'Citation' }}</strong>
+                  @if (citation.snippet) {
+                    <span>{{ citation.snippet }}</span>
+                  }
+                </li>
+              }
+            </ul>
+          }
+        } @else {
+          <p class="muted">Submit a prompt to stream the mock response.</p>
+        }
+      </section>
+    </div>
+
+    <div class="panel">
+      <div class="panel__header">
+        <h2>Trace</h2>
+        @if (active()) {
+          <span>Streaming</span>
+        }
+      </div>
+      <app-trace-timeline [events]="events()" />
+    </div>
+  </section>
+</main>
