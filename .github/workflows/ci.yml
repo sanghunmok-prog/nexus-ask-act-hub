@@ -27,7 +27,6 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('src/Nexus.Web/package.json') != '' }}
 
     steps:
       - name: Checkout
