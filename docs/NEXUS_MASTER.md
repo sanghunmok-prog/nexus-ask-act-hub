@@ -62,9 +62,10 @@ Build a portfolio-safe internal platform where users can:
 2. Save PolicyDocuments row
 3. Extract text
 4. Chunk text
-5. Embed chunks
-6. Save PolicyChunks
-7. Return ingestion completed state
+5. Save PolicyChunks with `Embedding = NULL`
+6. Return chunked pending embedding state
+
+Embedding generation is deferred to PR-09.
 
 ## Pipeline C — Act
 1. User requests GitHub issue creation

@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Nexus.OrchestratorApi\Nexus.OrchestratorApi.csproj" />
     <ProjectReference Include="..\..\src\Nexus.Contracts\Nexus.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Nexus.QuerySafety\Nexus.QuerySafety.csproj" />
   </ItemGroup>

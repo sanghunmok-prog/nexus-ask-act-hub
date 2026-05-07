@@ -16,6 +16,68 @@ For current merged-state implementation conventions, also read `docs/IMPLEMENTAT
 - `POST /api/documents/{docId}/ingest`
 - `GET /api/health`
 
+## Document upload contract
+
+### Endpoint
+`POST /api/documents/upload`
+
+### Request
+`multipart/form-data`
+
+Required form field:
+- `file`
+
+Optional form fields:
+- `title`
+- `sourceName`
+
+Supported file types:
+- `.txt`
+- `.md`
+- text-based `.pdf`
+
+If `title` is omitted, the Orchestrator derives it from the file name without extension. If `sourceName` is omitted, the Orchestrator uses the uploaded file name.
+
+### Success response
+
+PR-08 stores chunks before embeddings exist, so the status is `ChunkedPendingEmbedding`.
+
+```json
+{
+  "docId": "00000000-0000-0000-0000-000000000000",
+  "title": "Shipping Delay Policy",
+  "sourceName": "shipping-policy.md",
+  "status": "ChunkedPendingEmbedding",
+  "chunkCount": 3,
+  "chunks": [
+    {
+      "chunkIndex": 0,
+      "charStart": 0,
+      "charEnd": 1000,
+      "preview": "First 200 characters..."
+    }
+  ]
+}
+```
+
+### Error response
+
+```json
+{
+  "code": "DOCUMENT_TEXT_EMPTY",
+  "message": "Document text could not be extracted.",
+  "errors": []
+}
+```
+
+Sanitized error codes:
+- `DOCUMENT_FILE_REQUIRED`
+- `DOCUMENT_FILE_EMPTY`
+- `DOCUMENT_TYPE_NOT_SUPPORTED`
+- `DOCUMENT_TEXT_EMPTY`
+- `DOCUMENT_INGESTION_FAILED`
+- `SQL_CONNECTION_NOT_CONFIGURED`
+
 ## Chat stream contract
 
 ### Endpoint

@@ -1,13 +1,51 @@
 using System.Text.Json;
+using Nexus.OrchestratorApi.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.Services.AddSingleton<DocumentTextExtractor>();
+builder.Services.AddSingleton<DocumentChunker>();
+builder.Services.AddSingleton<DocumentIngestionService>();
+builder.Services.AddSingleton<IDocumentIngestionRepository, SqlDocumentIngestionRepository>();
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 app.MapGet("/api/health", () => Results.Ok());
+app.MapPost("/api/documents/upload", async (
+    HttpRequest request,
+    DocumentIngestionService service,
+    CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType)
+    {
+        var missingFileResult = DocumentUploadResult.Failure(
+            StatusCodes.Status400BadRequest,
+            "DOCUMENT_FILE_REQUIRED",
+            "Document file is required.");
+
+        return Results.Json(missingFileResult.Error, statusCode: missingFileResult.StatusCode);
+    }
+
+    var form = await request.ReadFormAsync(cancellationToken);
+    var file = form.Files.GetFile("file");
+
+    var input = new DocumentUploadInput(
+        file?.FileName,
+        form["title"].FirstOrDefault(),
+        form["sourceName"].FirstOrDefault(),
+        file?.OpenReadStream(),
+        file?.Length ?? 0);
+
+    await using (input.Content)
+    {
+        var result = await service.UploadAsync(input, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+});
 
 app.MapPost("/api/chat/stream", async (HttpContext context) =>
 {

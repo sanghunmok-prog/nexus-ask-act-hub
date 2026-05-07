@@ -266,3 +266,13 @@ Still out of scope through PR-05:
 - `src/Nexus.Mcp.Toolbelt` owns runtime execution for `db.query_readonly`.
 - The PR-07 local HTTP shim for `db.query_readonly` is `POST /api/tools/db/query-readonly`.
 - `db.query_readonly` accepts `Nexus.Contracts.StructuredQuery`, validates it with `Nexus.QuerySafety`, compiles it to a parameterized `SELECT`, and executes only that compiler-generated SQL.
+
+## PR-08 document ingestion convention
+
+- `src/Nexus.OrchestratorApi` owns document upload and ingestion.
+- The PR-08 upload endpoint is `POST /api/documents/upload`.
+- Supported inputs are `.txt`, `.md`, and text-based `.pdf`; OCR remains out of scope.
+- Uploaded document text is chunked deterministically with 1000-character chunks and 150-character overlap.
+- PR-08 inserts `PolicyDocuments` and `PolicyChunks`.
+- `PolicyChunks.Embedding` is stored as `NULL` in PR-08.
+- Embedding generation remains PR-09.

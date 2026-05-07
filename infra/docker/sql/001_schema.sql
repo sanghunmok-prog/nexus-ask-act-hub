@@ -20,7 +20,7 @@ CREATE TABLE dbo.PolicyChunks (
   DocId UNIQUEIDENTIFIER NOT NULL,
   ChunkIndex INT NOT NULL,
   ChunkText NVARCHAR(MAX) NOT NULL,
-  Embedding VECTOR(1536) NOT NULL,
+  Embedding VECTOR(1536) NULL,
   MetadataJson NVARCHAR(MAX) NOT NULL,
   CONSTRAINT FK_PolicyChunks_Documents
     FOREIGN KEY (DocId) REFERENCES dbo.PolicyDocuments(DocId)
