@@ -258,3 +258,11 @@ Still out of scope through PR-05:
 - The PR-06 local HTTP shim for `db.get_schema_summary` is `GET /api/tools/db/schema-summary`.
 - PR-06 projects allowlisted tables to table name plus allowlisted `select` columns only.
 - PR-06 does not execute SQL and does not implement `db.query_readonly`.
+
+## PR-07 Toolbelt readonly query convention
+
+- Query safety code now belongs to `src/Nexus.QuerySafety`.
+- `src/Nexus.OrchestratorApi/Security/allowlist.json` remains the allowlist source of truth.
+- `src/Nexus.Mcp.Toolbelt` owns runtime execution for `db.query_readonly`.
+- The PR-07 local HTTP shim for `db.query_readonly` is `POST /api/tools/db/query-readonly`.
+- `db.query_readonly` accepts `Nexus.Contracts.StructuredQuery`, validates it with `Nexus.QuerySafety`, compiles it to a parameterized `SELECT`, and executes only that compiler-generated SQL.

@@ -159,6 +159,12 @@ In PR-05:
 
 Actual DB execution is deferred to PR-07.
 
+## PR-07 SQL read execution
+
+PR-07 enables SQL Server read execution only through `StructuredQuery` validation and compiler-generated parameterized `SELECT` statements.
+
+Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL text, joins, writes, stored procedures, or non-compiler-generated commands for `db.query_readonly`.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:

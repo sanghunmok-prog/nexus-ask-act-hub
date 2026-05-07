@@ -1,4 +1,4 @@
-namespace Nexus.OrchestratorApi.Security;
+namespace Nexus.QuerySafety;
 
 public sealed record CompiledSqlQuery(
     string SqlText,

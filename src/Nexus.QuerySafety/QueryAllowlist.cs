@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nexus.OrchestratorApi.Security;
+namespace Nexus.QuerySafety;
 
 public sealed record QueryAllowlist
 {

@@ -20,10 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nexus.Contracts\Nexus.Contracts.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\..\src\Nexus.OrchestratorApi\Security\*.cs" Link="Security\%(Filename)%(Extension)" />
+    <ProjectReference Include="..\..\src\Nexus.QuerySafety\Nexus.QuerySafety.csproj" />
   </ItemGroup>
 
 </Project>
