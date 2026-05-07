@@ -34,7 +34,7 @@ CREATE TABLE dbo.PolicyChunks (
   DocId UNIQUEIDENTIFIER NOT NULL,
   ChunkIndex INT NOT NULL,
   ChunkText NVARCHAR(MAX) NOT NULL,
-  Embedding VECTOR(1536) NOT NULL,
+  Embedding VECTOR(1536) NULL,
   MetadataJson NVARCHAR(MAX) NOT NULL,
   CONSTRAINT FK_PolicyChunks_Documents
     FOREIGN KEY (DocId) REFERENCES dbo.PolicyDocuments(DocId)
@@ -87,4 +87,8 @@ CREATE TABLE dbo.AgentCheckpoint (
 
 ## Notes
 - VECTOR(1536) is the initial embedding dimension choice from the reference doc.
+- `PolicyChunks.Embedding` is nullable during staged document ingestion.
+- PR-08 stores extracted chunks with `Embedding = NULL`.
+- PR-09 will populate embeddings.
+- PR-10 will search embedded chunks only.
 - PR-02 may implement this via SQL scripts first and EF migrations only if useful.

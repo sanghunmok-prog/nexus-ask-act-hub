@@ -165,6 +165,14 @@ PR-07 enables SQL Server read execution only through `StructuredQuery` validatio
 
 Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL text, joins, writes, stored procedures, or non-compiler-generated commands for `db.query_readonly`.
 
+## PR-08 document ingestion safety
+
+- Only `.txt`, `.md`, and text-based `.pdf` uploads are supported.
+- OCR and scanned PDF extraction are out of scope.
+- Scanned PDFs or files with no extractable text return sanitized upload errors.
+- Public upload errors must not include full extracted document text, connection strings, generated SQL, or internal exception details.
+- PR-08 does not create embeddings and does not implement document search.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
