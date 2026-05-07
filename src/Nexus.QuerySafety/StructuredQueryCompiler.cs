@@ -1,6 +1,6 @@
 using Nexus.Contracts;
 
-namespace Nexus.OrchestratorApi.Security;
+namespace Nexus.QuerySafety;
 
 public sealed class StructuredQueryCompiler
 {

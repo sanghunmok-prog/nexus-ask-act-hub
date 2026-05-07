@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nexus.Mcp.Toolbelt\Nexus.Mcp.Toolbelt.csproj" />
     <ProjectReference Include="..\..\src\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Nexus.QuerySafety\Nexus.QuerySafety.csproj" />
   </ItemGroup>
 
   <ItemGroup>

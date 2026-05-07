@@ -1,6 +1,5 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Nexus.Contracts;
+using Nexus.QuerySafety;
 
 namespace Nexus.Mcp.Toolbelt.Tools;
 
@@ -20,7 +19,7 @@ public sealed class DbSchemaSummaryTool
 
     public async Task<DbSchemaSummaryResponse> GetSchemaSummaryAsync(CancellationToken cancellationToken = default)
     {
-        var allowlist = await LoadAllowlistAsync(cancellationToken);
+        var allowlist = await QueryAllowlist.LoadAsync(allowlistPath, cancellationToken);
 
         var tables = allowlist.Tables
             .Select(table => new DbSchemaTableSummary
@@ -35,31 +34,4 @@ public sealed class DbSchemaSummaryTool
             Tables = tables
         };
     }
-
-    private async Task<ToolbeltAllowlist> LoadAllowlistAsync(CancellationToken cancellationToken)
-    {
-        await using var stream = File.OpenRead(allowlistPath);
-
-        var allowlist = await JsonSerializer.DeserializeAsync(
-            stream,
-            ToolbeltAllowlistJsonContext.Default.ToolbeltAllowlist,
-            cancellationToken);
-
-        return allowlist ?? throw new InvalidOperationException("Allowlist file is empty or invalid.");
-    }
 }
-
-internal sealed record ToolbeltAllowlist
-{
-    public IReadOnlyDictionary<string, ToolbeltAllowlistTable> Tables { get; init; } =
-        new Dictionary<string, ToolbeltAllowlistTable>(StringComparer.OrdinalIgnoreCase);
-}
-
-internal sealed record ToolbeltAllowlistTable
-{
-    public IReadOnlyList<string> Select { get; init; } = [];
-}
-
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-[JsonSerializable(typeof(ToolbeltAllowlist))]
-internal sealed partial class ToolbeltAllowlistJsonContext : JsonSerializerContext;

@@ -1,5 +1,5 @@
 using Nexus.Contracts;
-using Nexus.OrchestratorApi.Security;
+using Nexus.QuerySafety;
 
 namespace Nexus.OrchestratorApi.Tests;
 

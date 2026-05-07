@@ -155,6 +155,10 @@ Output:
 }
 db.query_readonly
 
+PR-07 local HTTP shim:
+
+`POST /api/tools/db/query-readonly`
+
 The following StructuredQuery shape is locked for PR-05+ and should be treated as the authoritative query contract going forward.
 
 Input shape:
@@ -188,6 +192,35 @@ Locked conventions for this shape:
 filters combine with AND only
 limit is required
 value2 is used only for between
+
+Success output:
+
+```json
+{
+  "rowCount": 5,
+  "rows": [
+    {
+      "OrderId": 11,
+      "Status": "Delayed",
+      "ExpectedShipDateUtc": "2026-01-20T17:00:00",
+      "ActualShipDateUtc": null,
+      "Carrier": "USPS"
+    }
+  ]
+}
+```
+
+Validation error output:
+
+```json
+{
+  "code": "QUERY_VALIDATION_FAILED",
+  "message": "StructuredQuery failed validation.",
+  "errors": [
+    "Select column 'InternalCost' is not allowlisted."
+  ]
+}
+```
 docs.search
 
 Input:
