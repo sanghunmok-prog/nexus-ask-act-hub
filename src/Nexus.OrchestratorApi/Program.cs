@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nexus.Embeddings;
 using Nexus.OrchestratorApi.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +8,10 @@ builder.AddServiceDefaults();
 builder.Services.AddSingleton<DocumentTextExtractor>();
 builder.Services.AddSingleton<DocumentChunker>();
 builder.Services.AddSingleton<DocumentIngestionService>();
+builder.Services.AddSingleton<DocumentEmbeddingService>();
+builder.Services.AddSingleton<IEmbeddingProvider, MockEmbeddingProvider>();
 builder.Services.AddSingleton<IDocumentIngestionRepository, SqlDocumentIngestionRepository>();
+builder.Services.AddSingleton<IDocumentEmbeddingRepository, SqlDocumentIngestionRepository>();
 
 var app = builder.Build();
 
@@ -45,6 +49,16 @@ app.MapPost("/api/documents/upload", async (
             ? Results.Ok(result.Response)
             : Results.Json(result.Error, statusCode: result.StatusCode);
     }
+});
+app.MapPost("/api/documents/{docId:guid}/ingest", async (
+    Guid docId,
+    DocumentEmbeddingService service,
+    CancellationToken cancellationToken) =>
+{
+    var result = await service.IngestAsync(docId, cancellationToken);
+    return result.Succeeded
+        ? Results.Ok(result.Response)
+        : Results.Json(result.Error, statusCode: result.StatusCode);
 });
 
 app.MapPost("/api/chat/stream", async (HttpContext context) =>

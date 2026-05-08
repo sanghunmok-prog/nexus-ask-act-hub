@@ -24,6 +24,17 @@ public sealed record DocumentChunkRecord(
     string ChunkText,
     string MetadataJson);
 
+public sealed record DocumentEmbeddingChunkRecord(
+    Guid ChunkId,
+    Guid DocId,
+    int ChunkIndex,
+    string ChunkText,
+    bool HasEmbedding);
+
+public sealed record DocumentChunkEmbeddingUpdate(
+    Guid ChunkId,
+    float[] Embedding);
+
 public sealed record DocumentUploadResult(
     bool Succeeded,
     int StatusCode,
@@ -34,6 +45,32 @@ public sealed record DocumentUploadResult(
         new(true, StatusCodes.Status200OK, response, null);
 
     public static DocumentUploadResult Failure(
+        int statusCode,
+        string code,
+        string message,
+        IReadOnlyList<string>? errors = null) =>
+        new(
+            false,
+            statusCode,
+            null,
+            new DocumentUploadErrorResponse
+            {
+                Code = code,
+                Message = message,
+                Errors = errors ?? []
+            });
+}
+
+public sealed record DocumentEmbeddingResult(
+    bool Succeeded,
+    int StatusCode,
+    DocumentIngestResponse? Response,
+    DocumentUploadErrorResponse? Error)
+{
+    public static DocumentEmbeddingResult Success(DocumentIngestResponse response) =>
+        new(true, StatusCodes.Status200OK, response, null);
+
+    public static DocumentEmbeddingResult Failure(
         int statusCode,
         string code,
         string message,

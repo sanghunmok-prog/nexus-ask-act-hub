@@ -78,6 +78,60 @@ Sanitized error codes:
 - `DOCUMENT_INGESTION_FAILED`
 - `SQL_CONNECTION_NOT_CONFIGURED`
 
+## Document ingest contract
+
+### Endpoint
+`POST /api/documents/{docId}/ingest`
+
+### Request
+No request body is required. `docId` comes from the route.
+
+The endpoint completes staged ingestion for a document already uploaded through `POST /api/documents/upload`. It embeds chunks where `PolicyChunks.Embedding IS NULL` and skips chunks that already have embeddings.
+
+### Success response
+
+```json
+{
+  "docId": "00000000-0000-0000-0000-000000000000",
+  "status": "Embedded",
+  "embeddingProvider": "mock-token-hashing",
+  "embeddingDimension": 1536,
+  "embeddedChunkCount": 1,
+  "skippedChunkCount": 0
+}
+```
+
+### Already embedded response
+
+```json
+{
+  "docId": "00000000-0000-0000-0000-000000000000",
+  "status": "AlreadyEmbedded",
+  "embeddingProvider": "mock-token-hashing",
+  "embeddingDimension": 1536,
+  "embeddedChunkCount": 0,
+  "skippedChunkCount": 1
+}
+```
+
+The public response does not include embedding vectors, chunk text, generated SQL, or connection strings.
+
+### Error response
+
+```json
+{
+  "code": "DOCUMENT_NOT_FOUND",
+  "message": "Document was not found.",
+  "errors": []
+}
+```
+
+Sanitized error codes:
+- `DOCUMENT_NOT_FOUND`
+- `DOCUMENT_CHUNKS_NOT_FOUND`
+- `SQL_CONNECTION_NOT_CONFIGURED`
+- `DOCUMENT_EMBEDDING_FAILED`
+
 ## Chat stream contract
 
 ### Endpoint
