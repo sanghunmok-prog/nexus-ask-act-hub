@@ -1,4 +1,5 @@
 using Nexus.Contracts;
+using Nexus.Embeddings;
 using Nexus.Mcp.Toolbelt.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,7 +7,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.Services.AddSingleton<DbSchemaSummaryTool>();
 builder.Services.AddSingleton<DbQueryReadonlyTool>();
+builder.Services.AddSingleton<DocsSearchTool>();
+builder.Services.AddSingleton<DocsGetChunkTool>();
 builder.Services.AddSingleton<IReadonlyQueryExecutor, SqlServerReadonlyQueryExecutor>();
+builder.Services.AddSingleton<IEmbeddingProvider, MockEmbeddingProvider>();
+builder.Services.AddSingleton<IDocumentRetrievalRepository, SqlServerDocumentRetrievalRepository>();
 
 var app = builder.Build();
 
@@ -39,6 +44,52 @@ app.MapPost("/api/tools/db/query-readonly", async (
     catch (Exception)
     {
         var result = DbQueryReadonlyToolResult.ExecutionFailed();
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+});
+app.MapPost("/api/tools/docs/search", async (
+    DocsSearchRequest request,
+    DocsSearchTool tool,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await tool.SearchAsync(request, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch (SqlConnectionNotConfiguredException)
+    {
+        var result = DocsSearchToolResult.ConnectionNotConfigured();
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch (Exception)
+    {
+        var result = DocsSearchToolResult.SearchFailed();
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+});
+app.MapPost("/api/tools/docs/get-chunk", async (
+    DocsGetChunkRequest request,
+    DocsGetChunkTool tool,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await tool.GetChunkAsync(request, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch (SqlConnectionNotConfiguredException)
+    {
+        var result = DocsGetChunkToolResult.ConnectionNotConfigured();
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch (Exception)
+    {
+        var result = DocsGetChunkToolResult.LookupFailed();
         return Results.Json(result.Error, statusCode: result.StatusCode);
     }
 });

@@ -67,7 +67,7 @@ Build a portfolio-safe internal platform where users can:
 7. Call POST /api/documents/{docId}/ingest
 8. Populate deterministic mock embeddings and mark chunks embedded
 
-Document search remains deferred to PR-10.
+PR-10 implements Toolbelt citation-ready document search and `docs.get_chunk`; UI citation rendering and chat integration remain later work.
 
 ## Pipeline C — Act
 1. User requests GitHub issue creation

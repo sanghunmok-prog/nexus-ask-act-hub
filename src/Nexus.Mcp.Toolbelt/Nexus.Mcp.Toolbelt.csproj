@@ -4,13 +4,11 @@
     <ProjectReference Include="..\Nexus.ServiceDefaults\Nexus.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Nexus.Contracts\Nexus.Contracts.csproj" />
     <ProjectReference Include="..\Nexus.QuerySafety\Nexus.QuerySafety.csproj" />
+    <ProjectReference Include="..\Nexus.Embeddings\Nexus.Embeddings.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\Nexus.OrchestratorApi\Security\allowlist.json"
-             Link="Security\allowlist.json"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Nexus.OrchestratorApi\Security\allowlist.json" Link="Security\allowlist.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

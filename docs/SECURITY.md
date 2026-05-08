@@ -181,6 +181,14 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - SQL connection and embedding failures return sanitized JSON errors without internal exception details.
 - PR-09 does not implement document search or vector search.
 
+## PR-10 document retrieval safety
+
+- `docs.search` and `docs.get_chunk` do not accept raw SQL input or SQL fragments.
+- `docs.search` returns short snippets and citation metadata, not full chunk text by default.
+- `docs.get_chunk` returns full chunk text only for explicit chunk lookup by `chunkId` or citation id.
+- SQL and vector search failures return sanitized JSON errors without internal exception details.
+- If SQL Server vector syntax is unavailable, do not use fake vector-search fallbacks such as keyword search, random distances, or in-memory scans.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
