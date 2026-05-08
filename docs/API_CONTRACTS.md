@@ -339,32 +339,123 @@ Validation error output:
 ```
 docs.search
 
+PR-10 local HTTP shim:
+
+`POST /api/tools/docs/search`
+
 Input:
 
+```json
 {
-  "query": "delayed shipments policy",
+  "query": "delayed shipping policy escalation carrier",
   "topK": 5
 }
+```
+
+`topK` defaults to `5` when omitted or null. `topK <= 0` is invalid. `topK > 20` is clamped to `20`.
 
 Output:
 
+```json
 {
+  "query": "delayed shipping policy escalation carrier",
+  "topK": 5,
+  "resultCount": 1,
   "results": [
     {
-      "citationId": "doc-guid:12",
-      "sourceName": "ShippingPolicy.pdf",
-      "snippet": "...",
+      "citationId": "590c239e-47b1-4b51-8641-368e76c6ecd0:0",
+      "docId": "590c239e-47b1-4b51-8641-368e76c6ecd0",
+      "chunkId": "11111111-1111-1111-1111-111111111111",
+      "chunkIndex": 0,
+      "title": "Shipping Delay Policy",
+      "sourceName": "nexus-shipping-policy.md",
+      "snippet": "When an order is delayed, the shipping team must review carrier status...",
       "distance": 0.21
     }
   ]
 }
+```
+
+`docs.search` returns citation-ready snippets and metadata only. It does not return full chunk text, embedding vectors, raw SQL, or connection strings.
+
+Validation error output:
+
+```json
+{
+  "code": "DOCS_QUERY_INVALID",
+  "message": "Document search query is invalid.",
+  "errors": [
+    "Query is required."
+  ]
+}
+```
+
 docs.get_chunk
 
-Input:
+PR-10 local HTTP shim:
 
+`POST /api/tools/docs/get-chunk`
+
+Input by chunk id:
+
+```json
 {
-  "citationId": "doc-guid:12"
+  "chunkId": "11111111-1111-1111-1111-111111111111"
 }
+```
+
+Input by citation id:
+
+```json
+{
+  "citationId": "590c239e-47b1-4b51-8641-368e76c6ecd0:0"
+}
+```
+
+Exactly one of `chunkId` or `citationId` is required. `citationId` uses `{docId}:{chunkIndex}`.
+
+Output:
+
+```json
+{
+  "citationId": "590c239e-47b1-4b51-8641-368e76c6ecd0:0",
+  "docId": "590c239e-47b1-4b51-8641-368e76c6ecd0",
+  "chunkId": "11111111-1111-1111-1111-111111111111",
+  "chunkIndex": 0,
+  "title": "Shipping Delay Policy",
+  "sourceName": "nexus-shipping-policy.md",
+  "chunkText": "Full chunk text...",
+  "metadata": {
+    "charStart": 0,
+    "charEnd": 375
+  }
+}
+```
+
+`docs.get_chunk` returns full chunk text only for explicit chunk lookup. It does not return embedding vectors, raw SQL, or connection strings.
+
+Validation error output:
+
+```json
+{
+  "code": "DOCS_CHUNK_LOOKUP_INVALID",
+  "message": "Document chunk lookup is invalid.",
+  "errors": [
+    "Provide exactly one of chunkId or citationId."
+  ]
+}
+```
+
+Not found output:
+
+```json
+{
+  "code": "DOCS_CHUNK_NOT_FOUND",
+  "message": "Document chunk was not found.",
+  "errors": []
+}
+```
+
 github.create_issue
 
 Input:

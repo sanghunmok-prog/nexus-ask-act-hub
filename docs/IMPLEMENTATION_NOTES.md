@@ -285,3 +285,12 @@ Still out of scope through PR-05:
 - The ingest endpoint embeds existing `PolicyChunks` rows where `Embedding IS NULL` and persists embeddings to `PolicyChunks.Embedding`.
 - Live OpenAI or Azure OpenAI embeddings remain out of scope.
 - PR-09 does not implement `docs.search` or vector search.
+
+## PR-10 document retrieval convention
+
+- `src/Nexus.Mcp.Toolbelt` owns document retrieval tools.
+- The PR-10 local HTTP shims are `POST /api/tools/docs/search` and `POST /api/tools/docs/get-chunk`.
+- `docs.search` uses `Nexus.Embeddings` `mock-token-hashing` query embeddings and exact SQL Server `VECTOR_DISTANCE` against `PolicyChunks.Embedding`.
+- `docs.search` returns citation-ready snippets and metadata, not full chunk text or vectors.
+- `docs.get_chunk` returns full chunk text for an explicit selected `chunkId` or citation id.
+- Angular citation UI and Orchestrator chat integration remain future work.

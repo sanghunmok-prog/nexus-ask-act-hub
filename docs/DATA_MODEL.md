@@ -91,5 +91,7 @@ CREATE TABLE dbo.AgentCheckpoint (
 - PR-08 upload/chunking stores extracted chunks with `Embedding = NULL`.
 - PR-09 populates `PolicyChunks.Embedding` with deterministic mock embeddings.
 - `PolicyChunks.Embedding` remains `VECTOR(1536)`.
-- PR-10 will search only chunks where `Embedding IS NOT NULL`.
+- PR-10 `docs.search` searches only chunks where `Embedding IS NOT NULL`.
+- PR-10 `docs.search` uses exact `VECTOR_DISTANCE` over `PolicyChunks.Embedding`.
+- PR-10 `docs.get_chunk` retrieves chunk text by `ChunkId` or citation id (`DocId:ChunkIndex`) and does not require an embedding.
 - PR-02 may implement this via SQL scripts first and EF migrations only if useful.
