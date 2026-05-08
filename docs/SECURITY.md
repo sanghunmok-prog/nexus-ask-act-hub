@@ -173,6 +173,14 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - Public upload errors must not include full extracted document text, connection strings, generated SQL, or internal exception details.
 - PR-08 does not create embeddings and does not implement document search.
 
+## PR-09 embedding safety
+
+- PR-09 uses deterministic mock embeddings and makes no external model or API calls.
+- No embedding API keys or secrets are required.
+- Public embedding responses do not expose embedding vectors or chunk text.
+- SQL connection and embedding failures return sanitized JSON errors without internal exception details.
+- PR-09 does not implement document search or vector search.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:

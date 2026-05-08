@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nexus.ServiceDefaults\Nexus.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\Nexus.Embeddings\Nexus.Embeddings.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -275,4 +275,13 @@ Still out of scope through PR-05:
 - Uploaded document text is chunked deterministically with 1000-character chunks and 150-character overlap.
 - PR-08 inserts `PolicyDocuments` and `PolicyChunks`.
 - `PolicyChunks.Embedding` is stored as `NULL` in PR-08.
-- Embedding generation remains PR-09.
+
+## PR-09 embedding convention
+
+- `src/Nexus.Embeddings` is the shared embedding provider project.
+- The shared provider project exposes `IEmbeddingProvider` and `MockEmbeddingProvider` under the `Nexus.Embeddings` namespace.
+- PR-09 uses deterministic token-hashing mock embeddings with provider name `mock-token-hashing` and dimension `1536`.
+- `src/Nexus.OrchestratorApi` owns `POST /api/documents/{docId}/ingest`.
+- The ingest endpoint embeds existing `PolicyChunks` rows where `Embedding IS NULL` and persists embeddings to `PolicyChunks.Embedding`.
+- Live OpenAI or Azure OpenAI embeddings remain out of scope.
+- PR-09 does not implement `docs.search` or vector search.

@@ -64,8 +64,10 @@ Build a portfolio-safe internal platform where users can:
 4. Chunk text
 5. Save PolicyChunks with `Embedding = NULL`
 6. Return chunked pending embedding state
+7. Call POST /api/documents/{docId}/ingest
+8. Populate deterministic mock embeddings and mark chunks embedded
 
-Embedding generation is deferred to PR-09.
+Document search remains deferred to PR-10.
 
 ## Pipeline C — Act
 1. User requests GitHub issue creation

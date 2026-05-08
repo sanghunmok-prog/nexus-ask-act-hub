@@ -88,7 +88,8 @@ CREATE TABLE dbo.AgentCheckpoint (
 ## Notes
 - VECTOR(1536) is the initial embedding dimension choice from the reference doc.
 - `PolicyChunks.Embedding` is nullable during staged document ingestion.
-- PR-08 stores extracted chunks with `Embedding = NULL`.
-- PR-09 will populate embeddings.
-- PR-10 will search embedded chunks only.
+- PR-08 upload/chunking stores extracted chunks with `Embedding = NULL`.
+- PR-09 populates `PolicyChunks.Embedding` with deterministic mock embeddings.
+- `PolicyChunks.Embedding` remains `VECTOR(1536)`.
+- PR-10 will search only chunks where `Embedding IS NOT NULL`.
 - PR-02 may implement this via SQL scripts first and EF migrations only if useful.
