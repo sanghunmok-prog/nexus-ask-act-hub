@@ -294,3 +294,18 @@ Still out of scope through PR-05:
 - `docs.search` returns citation-ready snippets and metadata, not full chunk text or vectors.
 - `docs.get_chunk` returns full chunk text for an explicit selected `chunkId` or citation id.
 - Angular citation UI and Orchestrator chat integration remain future work.
+
+## PR-11 Orchestrator agent runtime convention
+
+- `src/Nexus.OrchestratorApi` owns the chat agent runtime for `POST /api/chat/stream`.
+- The POST-based SSE contract remains unchanged, and the frontend continues to consume the stream with `fetch + ReadableStream`.
+- `LLM_MODE=mock` is the default when no mode is configured.
+- Mock mode uses a deterministic planner for the delayed shipments / delayed orders policy demo prompt family.
+- Live mode is a configured seam only in PR-11; it returns a sanitized not-configured error and does not require API keys or live LLM packages.
+- `NEXUS_TOOLBELT_BASE_URL` controls Orchestrator-to-Toolbelt HTTP calls. `Toolbelt:BaseUrl` is the secondary configuration key. Development falls back to `http://localhost:5062`.
+- The Toolbelt local HTTP shims remain the integration path for PR-11:
+  - `POST /api/tools/docs/search`
+  - `GET /api/tools/db/schema-summary`
+  - `POST /api/tools/db/query-readonly`
+- PR-11 emits tool orchestration trace events and an `assistant.message` execution summary only.
+- Final hybrid SQL + policy answer composition remains PR-12.

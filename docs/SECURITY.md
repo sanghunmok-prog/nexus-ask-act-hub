@@ -189,6 +189,18 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - SQL and vector search failures return sanitized JSON errors without internal exception details.
 - If SQL Server vector syntax is unavailable, do not use fake vector-search fallbacks such as keyword search, random distances, or in-memory scans.
 
+## PR-11 Orchestrator runtime safety
+
+- `POST /api/chat/stream` must not stream chain-of-thought, hidden prompts, secrets, connection strings, or internal exception details.
+- Mock planner behavior is deterministic and bounded.
+- In PR-11, Orchestrator invokes only known read tool contracts:
+  - `docs.search`
+  - `db.get_schema_summary`
+  - `db.query_readonly`
+- No write/action tools are enabled in PR-11.
+- Live mode is optional, not required for tests, and does not bypass StructuredQuery allowlists or Toolbelt validation.
+- Unsupported `LLM_MODE` values and unconfigured live mode return sanitized SSE `error` events.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:

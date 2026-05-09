@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Nexus.Embeddings;
+using Nexus.OrchestratorApi.Agent;
 using Nexus.OrchestratorApi.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +12,10 @@ builder.Services.AddSingleton<DocumentEmbeddingService>();
 builder.Services.AddSingleton<IEmbeddingProvider, MockEmbeddingProvider>();
 builder.Services.AddSingleton<IDocumentIngestionRepository, SqlDocumentIngestionRepository>();
 builder.Services.AddSingleton<IDocumentEmbeddingRepository, SqlDocumentIngestionRepository>();
+builder.Services.AddSingleton<IChatPlanner>(services => ChatPlannerFactory.Create(services.GetRequiredService<IConfiguration>()));
+builder.Services.AddHttpClient<IToolbeltClient, HttpToolbeltClient>();
+builder.Services.AddSingleton<AgentRuntime>();
+builder.Services.AddSingleton<SseEventWriter>();
 
 var app = builder.Build();
 
@@ -61,7 +65,10 @@ app.MapPost("/api/documents/{docId:guid}/ingest", async (
         : Results.Json(result.Error, statusCode: result.StatusCode);
 });
 
-app.MapPost("/api/chat/stream", async (HttpContext context) =>
+app.MapPost("/api/chat/stream", async (
+    HttpContext context,
+    AgentRuntime runtime,
+    SseEventWriter eventWriter) =>
 {
     var request = await context.Request.ReadFromJsonAsync<ChatStreamRequest>(context.RequestAborted)
                   ?? new ChatStreamRequest(string.Empty);
@@ -70,87 +77,16 @@ app.MapPost("/api/chat/stream", async (HttpContext context) =>
     context.Response.ContentType = "text/event-stream";
     context.Response.Headers.CacheControl = "no-cache";
 
-    var correlationId = Guid.NewGuid().ToString();
+    var correlationId = Guid.NewGuid();
     var prompt = request.Prompt?.Trim() ?? string.Empty;
 
-    var events = new object[]
-    {
-        CreateEnvelope(
-            "workflow.started",
-            correlationId,
-            new
-            {
-                prompt
-            }),
-        CreateEnvelope(
-            "tool.call",
-            correlationId,
-            new
-            {
-                toolName = "docs.search",
-                sanitizedArgs = new
-                {
-                    query = prompt,
-                    topK = 3
-                },
-                requiresApproval = false
-            }),
-        CreateEnvelope(
-            "tool.result",
-            correlationId,
-            new
-            {
-                toolName = "docs.search",
-                rowCount = 0,
-                citationCount = 1,
-                summary = "Returned 1 mock policy citation"
-            }),
-        CreateEnvelope(
-            "assistant.message",
-            correlationId,
-            new
-            {
-                message = $"Mock answer for: {prompt}",
-                citations = new object[]
-                {
-                    new
-                    {
-                        citationId = "mock-policy:1",
-                        sourceName = "ShippingPolicy.pdf",
-                        snippet = "Delayed shipments must include a customer update within one business day."
-                    }
-                }
-            }),
-        CreateEnvelope(
-            "done",
-            correlationId,
-            new
-            {
-                success = true
-            })
-    };
-
-    foreach (var envelope in events)
-    {
-        if (context.RequestAborted.IsCancellationRequested)
-        {
-            break;
-        }
-
-        await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(envelope)}\n\n", context.RequestAborted);
-        await context.Response.Body.FlushAsync(context.RequestAborted);
-    }
+    await runtime.RunAsync(
+        prompt,
+        correlationId,
+        (envelope, cancellationToken) => eventWriter.WriteAsync(context.Response, envelope, cancellationToken),
+        context.RequestAborted);
 });
 
 app.Run();
-
-static object CreateEnvelope(string eventType, string correlationId, object payload) =>
-    new
-    {
-        eventType,
-        correlationId,
-        timestampUtc = DateTime.UtcNow,
-        payload
-    };
 
 internal sealed record ChatStreamRequest(string Prompt);

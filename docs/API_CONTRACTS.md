@@ -144,105 +144,120 @@ Current minimal request body:
 {
   "prompt": "Show delayed shipments last 30 days and the policy that applies."
 }
-Response transport
-Content-Type: text/event-stream
-This is a POST-based SSE endpoint
-The current frontend consumption pattern is fetch + ReadableStream
-Do not assume EventSource as the primary client for this endpoint because the current contract is POST-based
-SSE event types
-workflow.started
-tool.call
-tool.result
-checkpoint.saved
-approval.required
-approval.status
-workflow.resumed
-assistant.message
-error
-done
-Repository envelope decision
+```
+
+### Response transport
+- `Content-Type: text/event-stream`
+- This is a POST-based SSE endpoint.
+- The current frontend consumption pattern is `fetch + ReadableStream`.
+- Do not assume `EventSource` as the primary client for this endpoint because the current contract is POST-based.
+
+### PR-11 behavior
+
+`POST /api/chat/stream` now uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
+- `docs.search`
+- `db.get_schema_summary`
+- `db.query_readonly`
+
+PR-11 `assistant.message` is an orchestration summary only. It is not the final hybrid SQL + policy answer; final answer composition remains PR-12.
+
+### SSE event types
+
+Allowed PR-11 event types:
+- `workflow.started`
+- `tool.call`
+- `tool.result`
+- `assistant.message`
+- `error`
+- `done`
+
+Future PRs may add approval/checkpoint event types.
+
+### Repository envelope decision
 
 Use a single event envelope shape:
 
+```json
 {
   "eventType": "workflow.started",
   "correlationId": "GUID",
   "timestampUtc": "2026-04-02T03:00:00Z",
   "payload": {}
 }
-Minimal payload guidance
+```
+
+### Minimal payload guidance
+
 workflow.started
+```json
 {
   "prompt": "Show delayed shipments..."
 }
+```
+
 tool.call
+```json
 {
   "toolName": "docs.search",
   "sanitizedArgs": {
-    "query": "delayed shipments policy",
-    "topK": 3
+    "query": "delayed shipping policy escalation carrier",
+    "topK": 5
   },
   "requiresApproval": false
 }
+```
+
 tool.result
+```json
 {
   "toolName": "docs.search",
-  "rowCount": 0,
-  "citationCount": 1,
-  "summary": "Returned 1 mock policy citation"
+  "resultCount": 1,
+  "topResult": {
+    "citationId": "doc-guid:0",
+    "sourceName": "ShippingPolicy.pdf",
+    "title": "Shipping Delay Policy"
+  },
+  "result": {}
 }
-checkpoint.saved
-{
-  "checkpointId": "GUID",
-  "approvalId": "GUID"
-}
-approval.required
-{
-  "approvalId": "GUID",
-  "toolName": "github.create_issue",
-  "riskSummary": "Creates a GitHub issue in the configured repo"
-}
-approval.status
-{
-  "approvalId": "GUID",
-  "status": "Approved"
-}
-workflow.resumed
-{
-  "checkpointId": "GUID"
-}
+```
+
 assistant.message
+```json
 {
-  "message": "Merged answer text",
-  "citations": [
-    {
-      "citationId": "doc-guid:12",
-      "sourceName": "ShippingPolicy.pdf",
-      "snippet": "..."
-    }
-  ]
+  "message": "Found 5 delayed order rows and 1 relevant policy search results. Hybrid answer composition will be added in PR-12.",
+  "summary": {
+    "sqlRowCount": 5,
+    "documentResultCount": 1
+  }
 }
+```
+
 error
+```json
 {
-  "code": "QUERY_VALIDATION_FAILED",
-  "message": "Column is not allowlisted",
-  "retryable": true
+  "code": "TOOLBELT_CALL_FAILED",
+  "message": "Toolbelt call failed.",
+  "retryable": false
 }
+```
+
 done
+```json
 {
   "success": true
 }
-Current minimal mock sequence (PR-03 / PR-04)
+```
 
-The current mock happy-path sequence is:
+Current PR-11 happy-path sequence:
 
-workflow.started
-tool.call
-tool.result
-assistant.message
-done
+- `workflow.started`
+- `tool.call` / `tool.result` for `docs.search`
+- `tool.call` / `tool.result` for `db.get_schema_summary`
+- `tool.call` / `tool.result` for `db.query_readonly`
+- `assistant.message`
+- `done`
 
-This is intentionally minimal for the current merged implementation.
+This preserves the POST SSE contract while replacing hard-coded mock events with runtime tool orchestration.
 
 MCP tool contracts
 db.get_schema_summary
