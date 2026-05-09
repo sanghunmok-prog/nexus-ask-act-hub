@@ -14,6 +14,7 @@ builder.Services.AddSingleton<IDocumentIngestionRepository, SqlDocumentIngestion
 builder.Services.AddSingleton<IDocumentEmbeddingRepository, SqlDocumentIngestionRepository>();
 builder.Services.AddSingleton<IChatPlanner>(services => ChatPlannerFactory.Create(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddHttpClient<IToolbeltClient, HttpToolbeltClient>();
+builder.Services.AddSingleton<HybridResponseComposer>();
 builder.Services.AddSingleton<AgentRuntime>();
 builder.Services.AddSingleton<SseEventWriter>();
 

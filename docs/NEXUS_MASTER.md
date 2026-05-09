@@ -69,7 +69,9 @@ Build a portfolio-safe internal platform where users can:
 
 PR-10 implements Toolbelt citation-ready document search and `docs.get_chunk`; UI citation rendering and chat integration remain later work.
 
-PR-11 implements planner/runtime/tool orchestration and streams Toolbelt call traces. Final hybrid SQL + policy response composition remains PR-12.
+PR-11 implements planner/runtime/tool orchestration and streams Toolbelt call traces.
+
+PR-12 implements deterministic read-path hybrid response composition from Toolbelt SQL and document results. Approval-gated actions remain PR-13+.
 
 ## Pipeline C — Act
 1. User requests GitHub issue creation

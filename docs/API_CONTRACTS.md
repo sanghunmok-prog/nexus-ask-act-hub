@@ -152,18 +152,20 @@ Current minimal request body:
 - The current frontend consumption pattern is `fetch + ReadableStream`.
 - Do not assume `EventSource` as the primary client for this endpoint because the current contract is POST-based.
 
-### PR-11 behavior
+### PR-12 behavior
 
-`POST /api/chat/stream` now uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
+`POST /api/chat/stream` uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
 - `docs.search`
 - `db.get_schema_summary`
 - `db.query_readonly`
 
-PR-11 `assistant.message` is an orchestration summary only. It is not the final hybrid SQL + policy answer; final answer composition remains PR-12.
+After `docs.search` returns a top result, the runtime may dynamically call `docs.get_chunk` with the result `chunkId` or `citationId` to load full citation text for composition. This dynamic call is runtime behavior, not a static mock planner step.
+
+PR-12 `assistant.message` contains the final deterministic hybrid answer for the read path, including delayed order rows, relevant policy text, citations, and summary counts. It does not call a live LLM.
 
 ### SSE event types
 
-Allowed PR-11 event types:
+Allowed PR-12 event types:
 - `workflow.started`
 - `tool.call`
 - `tool.result`
@@ -224,10 +226,19 @@ tool.result
 assistant.message
 ```json
 {
-  "message": "Found 5 delayed order rows and 1 relevant policy search results. Hybrid answer composition will be added in PR-12.",
+  "message": "## Delayed orders\n5 delayed orders were returned by the current demo query.\n\n| OrderId | Status | Carrier | Expected ship date | Actual ship date | Delay reason |\n| --- | --- | --- | --- | --- | --- |\n| 11 | Delayed | USPS | 2026-02-01T00:00:00Z | — | Carrier exception |\n\n## Relevant policy\nEscalate delayed carrier shipments according to the cited policy text.\n\n## Citations\n[1] Shipping Delay Policy — nexus-shipping-policy.md — chunk 0",
+  "citations": [
+    {
+      "citationId": "doc-guid:0",
+      "title": "Shipping Delay Policy",
+      "sourceName": "nexus-shipping-policy.md",
+      "chunkIndex": 0
+    }
+  ],
   "summary": {
     "sqlRowCount": 5,
-    "documentResultCount": 1
+    "documentResultCount": 1,
+    "citationCount": 1
   }
 }
 ```
@@ -248,14 +259,17 @@ done
 }
 ```
 
-Current PR-11 happy-path sequence:
+Current PR-12 happy-path sequence when `docs.search` has a top result:
 
 - `workflow.started`
 - `tool.call` / `tool.result` for `docs.search`
+- `tool.call` / `tool.result` for `docs.get_chunk`
 - `tool.call` / `tool.result` for `db.get_schema_summary`
 - `tool.call` / `tool.result` for `db.query_readonly`
 - `assistant.message`
 - `done`
+
+When `docs.search` returns zero results, `docs.get_chunk` is not called and the final answer includes a no-policy-found section.
 
 This preserves the POST SSE contract while replacing hard-coded mock events with runtime tool orchestration.
 

@@ -146,6 +146,7 @@ public static class ChatPlannerFactory
 public static class ToolNames
 {
     public const string DocsSearch = "docs.search";
+    public const string DocsGetChunk = "docs.get_chunk";
     public const string DbGetSchemaSummary = "db.get_schema_summary";
     public const string DbQueryReadonly = "db.query_readonly";
 }

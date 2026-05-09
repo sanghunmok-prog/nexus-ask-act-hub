@@ -309,3 +309,12 @@ Still out of scope through PR-05:
   - `POST /api/tools/db/query-readonly`
 - PR-11 emits tool orchestration trace events and an `assistant.message` execution summary only.
 - Final hybrid SQL + policy answer composition remains PR-12.
+
+## PR-12 hybrid response composition convention
+
+- `src/Nexus.OrchestratorApi` owns deterministic read-path response composition.
+- `HybridResponseComposer` consumes collected PR-11 Toolbelt results from `docs.search`, optional `docs.get_chunk`, `db.get_schema_summary`, and `db.query_readonly`.
+- After `docs.search` returns a top result, the runtime dynamically calls `POST /api/tools/docs/get-chunk` with `chunkId` when present, otherwise `citationId`.
+- The composer uses `docs.get_chunk` `chunkText` for policy text. If chunk loading fails and `docs.search` has a snippet, the composer uses that snippet with a note that full citation text was unavailable.
+- PR-12 does not add live LLM answer generation, Semantic Kernel packages, Angular changes, approvals, checkpoints, or action tools.
+- PR-13+ handles approval and action-path implementation.
