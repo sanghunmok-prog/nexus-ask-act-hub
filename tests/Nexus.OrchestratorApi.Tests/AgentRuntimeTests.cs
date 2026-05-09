@@ -89,6 +89,8 @@ public sealed class AgentRuntimeTests
                 "tool.result",
                 "tool.call",
                 "tool.result",
+                "tool.call",
+                "tool.result",
                 "assistant.message",
                 "done"
             ],
@@ -96,15 +98,45 @@ public sealed class AgentRuntimeTests
 
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"docs.search\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.result" && PayloadString(envelope).Contains("\"toolName\":\"docs.search\"") && PayloadString(envelope).Contains("\"resultCount\":1"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"docs.get_chunk\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.result" && PayloadString(envelope).Contains("\"toolName\":\"docs.get_chunk\"") && PayloadString(envelope).Contains("\"chunkTextLength\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"db.get_schema_summary\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.result" && PayloadString(envelope).Contains("\"toolName\":\"db.get_schema_summary\"") && PayloadString(envelope).Contains("\"tableCount\":1"));
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"db.query_readonly\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "tool.result" && PayloadString(envelope).Contains("\"toolName\":\"db.query_readonly\"") && PayloadString(envelope).Contains("\"rowCount\":5"));
-        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("Hybrid answer composition will be added in PR-12"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("## Delayed orders"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("## Relevant policy"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("\"citationCount\":1"));
+        Assert.DoesNotContain(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("Hybrid answer composition will be added in PR-12"));
+        Assert.DoesNotContain(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("last 30 days", StringComparison.OrdinalIgnoreCase));
 
         var done = emitted.Last();
         Assert.Equal("done", done.EventType);
         Assert.True(Payload(done).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Agent_runtime_does_not_call_docs_get_chunk_when_docs_search_has_zero_results()
+    {
+        var emitted = await RunAsync(new FakeToolbeltClient(documentResultCount: 0));
+
+        Assert.DoesNotContain(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"docs.get_chunk\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("No relevant policy document was found."));
+        Assert.Equal("done", emitted.Last().EventType);
+        Assert.True(Payload(emitted.Last()).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Agent_runtime_uses_search_snippet_when_docs_get_chunk_fails()
+    {
+        var emitted = await RunAsync(new FakeToolbeltClient(failDocsGetChunk: true));
+
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"docs.get_chunk\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.result" && PayloadString(envelope).Contains("\"toolName\":\"docs.get_chunk\"") && PayloadString(envelope).Contains("\"success\":false"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("Escalate delayed carrier shipments."));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("full citation text was unavailable"));
+        Assert.Equal("done", emitted.Last().EventType);
+        Assert.True(Payload(emitted.Last()).GetProperty("success").GetBoolean());
     }
 
     [Fact]
@@ -152,11 +184,33 @@ public sealed class AgentRuntimeTests
 
     private sealed class FakeToolbeltClient : IToolbeltClient
     {
+        private readonly int documentResultCount;
+        private readonly bool failDocsGetChunk;
+
+        public FakeToolbeltClient(int documentResultCount = 1, bool failDocsGetChunk = false)
+        {
+            this.documentResultCount = documentResultCount;
+            this.failDocsGetChunk = failDocsGetChunk;
+        }
+
         public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default)
         {
+            if (step.ToolName == ToolNames.DocsGetChunk && failDocsGetChunk)
+            {
+                throw new ToolbeltClientException(step.ToolName, System.Net.HttpStatusCode.InternalServerError, "chunk unavailable");
+            }
+
             object result = step.ToolName switch
             {
-                ToolNames.DocsSearch => new
+                ToolNames.DocsSearch => documentResultCount == 0
+                    ? new
+                    {
+                        query = "delayed shipping policy escalation carrier",
+                        topK = 5,
+                        resultCount = 0,
+                        results = Array.Empty<object>()
+                    }
+                    : new
                 {
                     query = "delayed shipping policy escalation carrier",
                     topK = 5,
@@ -174,6 +228,21 @@ public sealed class AgentRuntimeTests
                             snippet = "Escalate delayed carrier shipments.",
                             distance = 0.1
                         }
+                    }
+                },
+                ToolNames.DocsGetChunk => new
+                {
+                    citationId = "doc-1:0",
+                    docId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    chunkId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                    chunkIndex = 0,
+                    title = "Shipping Delay Policy",
+                    sourceName = "shipping-policy.md",
+                    chunkText = "Escalate delayed carrier shipments when the policy threshold is met.",
+                    metadata = new
+                    {
+                        charStart = 0,
+                        charEnd = 65
                     }
                 },
                 ToolNames.DbGetSchemaSummary => new

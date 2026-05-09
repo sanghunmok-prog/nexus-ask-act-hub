@@ -201,6 +201,14 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - Live mode is optional, not required for tests, and does not bypass StructuredQuery allowlists or Toolbelt validation.
 - Unsupported `LLM_MODE` values and unconfigured live mode return sanitized SSE `error` events.
 
+## PR-12 hybrid response safety
+
+- `assistant.message` must not include chain-of-thought, hidden prompts, embeddings, connection strings, raw JSON blobs, or internal exception details.
+- Policy text in the final answer must be extractive from `docs.get_chunk` `chunkText` or, when chunk loading is unavailable, the `docs.search` snippet fallback.
+- The Orchestrator must not invent policy language or unsupported recommendations.
+- SQL rows in the final answer must come from the `db.query_readonly` result.
+- No write/action tools are enabled in PR-12.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
