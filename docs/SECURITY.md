@@ -209,6 +209,15 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - SQL rows in the final answer must come from the `db.query_readonly` result.
 - No write/action tools are enabled in PR-12.
 
+## PR-13 approval/checkpoint safety
+
+- External actions require explicit approval before execution.
+- PR-13 persists approval requests and checkpoints but does not execute GitHub or other external actions.
+- `ParamsHash` is SHA-256 over deterministic action parameter JSON and binds the approval record to the pending action parameters.
+- Pending action params must not include secrets, connection strings, hidden prompts, chain-of-thought, or internal exception details.
+- There is no auth/RBAC in PR-13. `X-Nexus-UserId` is a demo identity placeholder, with `demo-user` as the fallback.
+- Approval transitions are one-way from `Pending` to `Approved` or `Rejected`; approve/reject on non-pending approvals returns a sanitized conflict.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
@@ -217,7 +226,7 @@ For any tool with `requiresApproval=true`:
 2. create `AgentCheckpoint`
 3. emit `approval.required`
 4. stop workflow
-5. only resume after approve/reject endpoint decision
+5. only resume after approve/reject endpoint decision in a later PR
 
 ## Ownership rule
 

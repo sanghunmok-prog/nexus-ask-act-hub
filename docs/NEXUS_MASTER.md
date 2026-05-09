@@ -71,7 +71,9 @@ PR-10 implements Toolbelt citation-ready document search and `docs.get_chunk`; U
 
 PR-11 implements planner/runtime/tool orchestration and streams Toolbelt call traces.
 
-PR-12 implements deterministic read-path hybrid response composition from Toolbelt SQL and document results. Approval-gated actions remain PR-13+.
+PR-12 implements deterministic read-path hybrid response composition from Toolbelt SQL and document results.
+
+PR-13 implements the approval/checkpoint backend foundation. Approval UI, workflow resume, and GitHub execution remain later PRs.
 
 ## Pipeline C — Act
 1. User requests GitHub issue creation
@@ -84,6 +86,8 @@ PR-12 implements deterministic read-path hybrid response composition from Toolbe
 8. Execute github.create_issue
 9. Write AuditLog events
 10. Emit assistant.message and done
+
+PR-13 implements steps 1-6 for backend approval/checkpoint state only. PR-14+ adds UI/resume work, and PR-16 adds GitHub execution.
 
 ## Pipeline D — Self-correction
 1. db.query_readonly fails

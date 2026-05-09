@@ -8,8 +8,8 @@ For current merged-state implementation conventions, also read `docs/IMPLEMENTAT
 
 - `POST /api/chat/stream`
 - `GET /api/approvals/pending`
-- `POST /api/approvals/{id}/approve`
-- `POST /api/approvals/{id}/reject`
+- `POST /api/approvals/{approvalId}/approve`
+- `POST /api/approvals/{approvalId}/reject`
 - `GET /api/audit/recent`
 - `GET /api/audit?correlationId=...`
 - `POST /api/documents/upload`
@@ -132,6 +132,83 @@ Sanitized error codes:
 - `SQL_CONNECTION_NOT_CONFIGURED`
 - `DOCUMENT_EMBEDDING_FAILED`
 
+## Approval contract
+
+PR-13 adds backend approval/checkpoint persistence for action intents. Approve and reject endpoints only record decisions; they do not resume workflows or execute external actions in PR-13.
+
+### Pending approvals
+
+`GET /api/approvals/pending`
+
+Returns pending approvals ordered by `requestedAtUtc` descending.
+
+```json
+{
+  "approvals": [
+    {
+      "approvalId": "00000000-0000-0000-0000-000000000000",
+      "correlationId": "11111111-1111-1111-1111-111111111111",
+      "requestedAtUtc": "2026-04-02T03:00:00Z",
+      "requestedByUserId": "demo-user",
+      "status": "Pending",
+      "toolName": "github.create_issue",
+      "paramsHash": "sha256-hex",
+      "params": {
+        "repo": "sanghunmok-prog/nexus-ask-act-hub",
+        "title": "Delayed shipments review",
+        "labels": ["nexus-demo"]
+      },
+      "riskSummary": "Creates a GitHub issue. No action will run until approved."
+    }
+  ]
+}
+```
+
+### Approve
+
+`POST /api/approvals/{approvalId}/approve`
+
+Uses `X-Nexus-UserId` when present; otherwise records `demo-user`.
+
+```json
+{
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "status": "Approved",
+  "resumeAvailable": false,
+  "message": "Approval recorded. Workflow resume will be implemented in a later PR."
+}
+```
+
+### Reject
+
+`POST /api/approvals/{approvalId}/reject`
+
+Rejection records `Status = "Rejected"` and marks a related `WaitingApproval` checkpoint as `Failed` when present.
+
+```json
+{
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "status": "Rejected",
+  "resumeAvailable": false,
+  "message": "Approval rejected. No external action was executed."
+}
+```
+
+### Approval errors
+
+```json
+{
+  "code": "APPROVAL_NOT_FOUND",
+  "message": "Approval request was not found.",
+  "errors": []
+}
+```
+
+Error codes:
+- `APPROVAL_NOT_FOUND`
+- `APPROVAL_NOT_PENDING`
+- `APPROVAL_PERSISTENCE_FAILED`
+
 ## Chat stream contract
 
 ### Endpoint
@@ -152,7 +229,7 @@ Current minimal request body:
 - The current frontend consumption pattern is `fetch + ReadableStream`.
 - Do not assume `EventSource` as the primary client for this endpoint because the current contract is POST-based.
 
-### PR-12 behavior
+### PR-13 behavior
 
 `POST /api/chat/stream` uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
 - `docs.search`
@@ -163,17 +240,19 @@ After `docs.search` returns a top result, the runtime may dynamically call `docs
 
 PR-12 `assistant.message` contains the final deterministic hybrid answer for the read path, including delayed order rows, relevant policy text, citations, and summary counts. It does not call a live LLM.
 
+For action prompts containing `create` plus `issue` or `ticket`, PR-13 creates a pending `ApprovalRequest` and `AgentCheckpoint` for `github.create_issue`. It does not call GitHub, execute Toolbelt action tools, or resume workflow execution.
+
 ### SSE event types
 
-Allowed PR-12 event types:
+Allowed PR-13 event types:
 - `workflow.started`
 - `tool.call`
 - `tool.result`
+- `checkpoint.saved`
+- `approval.required`
 - `assistant.message`
 - `error`
 - `done`
-
-Future PRs may add approval/checkpoint event types.
 
 ### Repository envelope decision
 
@@ -220,6 +299,29 @@ tool.result
     "title": "Shipping Delay Policy"
   },
   "result": {}
+}
+```
+
+checkpoint.saved
+```json
+{
+  "checkpointId": "22222222-2222-2222-2222-222222222222",
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "status": "WaitingApproval"
+}
+```
+
+approval.required
+```json
+{
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "toolName": "github.create_issue",
+  "riskSummary": "Creates a GitHub issue. No action will run until approved.",
+  "params": {
+    "repo": "sanghunmok-prog/nexus-ask-act-hub",
+    "title": "Delayed shipments review",
+    "labels": ["nexus-demo"]
+  }
 }
 ```
 
@@ -270,6 +372,15 @@ Current PR-12 happy-path sequence when `docs.search` has a top result:
 - `done`
 
 When `docs.search` returns zero results, `docs.get_chunk` is not called and the final answer includes a no-policy-found section.
+
+Current PR-13 action-intent sequence:
+
+- `workflow.started`
+- `tool.call` for `github.create_issue` intent with `requiresApproval = true`
+- `checkpoint.saved`
+- `approval.required`
+- `assistant.message`
+- `done`
 
 This preserves the POST SSE contract while replacing hard-coded mock events with runtime tool orchestration.
 

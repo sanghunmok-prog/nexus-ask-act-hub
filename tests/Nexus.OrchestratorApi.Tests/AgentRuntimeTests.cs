@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Nexus.Contracts;
 using Nexus.OrchestratorApi.Agent;
+using Nexus.OrchestratorApi.Approvals;
 
 namespace Nexus.OrchestratorApi.Tests;
 
@@ -159,21 +161,90 @@ public sealed class AgentRuntimeTests
         Assert.False(Payload(done).GetProperty("success").GetBoolean());
     }
 
-    private static async Task<IReadOnlyList<SseEnvelope>> RunAsync(IToolbeltClient toolbeltClient)
+    [Fact]
+    public async Task Action_prompt_creates_approval_checkpoint_and_emits_approval_events()
     {
-        var runtime = new AgentRuntime(new MockChatPlanner(), toolbeltClient);
+        var repository = new FakeApprovalRepository();
+        var toolbeltClient = new FakeToolbeltClient();
+        var emitted = await RunAsync(
+            toolbeltClient,
+            CreateApprovalService(repository),
+            "Create a GitHub issue for the delayed shipment findings.",
+            "reviewer-1");
+
+        Assert.Equal(
+            [
+                "workflow.started",
+                "tool.call",
+                "checkpoint.saved",
+                "approval.required",
+                "assistant.message",
+                "done"
+            ],
+            emitted.Select(envelope => envelope.EventType).ToArray());
+
+        Assert.NotNull(repository.CreatedApproval);
+        Assert.NotNull(repository.CreatedCheckpoint);
+        Assert.Equal(ApprovalStatuses.Pending, repository.CreatedApproval.Status);
+        Assert.Equal(CheckpointStatuses.WaitingApproval, repository.CreatedCheckpoint.Status);
+        Assert.Equal("reviewer-1", repository.CreatedApproval.RequestedByUserId);
+        Assert.Equal(ApprovalIntentFactory.GitHubCreateIssueToolName, repository.CreatedApproval.ToolName);
+        Assert.Equal(repository.CreatedApproval.CorrelationId, repository.CreatedCheckpoint.CorrelationId);
+        Assert.Equal(repository.CreatedApproval.ParamsHash, ApprovalJson.ComputeParamsHash(repository.CreatedApproval.ParamsJson));
+
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"github.create_issue\"") && PayloadString(envelope).Contains("\"requiresApproval\":true"));
+        Assert.Contains(emitted, envelope => envelope.EventType == "checkpoint.saved" && PayloadString(envelope).Contains("\"status\":\"WaitingApproval\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "approval.required" && PayloadString(envelope).Contains("\"toolName\":\"github.create_issue\"") && PayloadString(envelope).Contains("\"repo\":\"sanghunmok-prog/nexus-ask-act-hub\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("No external action has been executed."));
+        Assert.Equal(0, toolbeltClient.CallCount);
+
+        var done = emitted.Last();
+        Assert.Equal("done", done.EventType);
+        Assert.True(Payload(done).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Non_action_prompt_still_uses_read_path_when_approval_service_is_configured()
+    {
+        var repository = new FakeApprovalRepository();
+        var toolbeltClient = new FakeToolbeltClient();
+        var emitted = await RunAsync(
+            toolbeltClient,
+            CreateApprovalService(repository),
+            "Show delayed shipments and cite the relevant policy.");
+
+        Assert.Contains(emitted, envelope => envelope.EventType == "tool.call" && PayloadString(envelope).Contains("\"toolName\":\"docs.search\""));
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("## Delayed orders"));
+        Assert.Null(repository.CreatedApproval);
+        Assert.True(toolbeltClient.CallCount > 0);
+    }
+
+    private static async Task<IReadOnlyList<SseEnvelope>> RunAsync(
+        IToolbeltClient toolbeltClient,
+        ApprovalService? approvalService = null,
+        string prompt = "Show delayed shipments and cite the relevant policy.",
+        string requestedByUserId = "demo-user")
+    {
+        var runtime = new AgentRuntime(new MockChatPlanner(), toolbeltClient, approvalService: approvalService);
         var emitted = new List<SseEnvelope>();
 
         await runtime.RunAsync(
-            "Show delayed shipments and cite the relevant policy.",
+            prompt,
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             (envelope, _) =>
             {
                 emitted.Add(envelope);
                 return Task.CompletedTask;
-            });
+            },
+            requestedByUserId);
 
         return emitted;
+    }
+
+    private static ApprovalService CreateApprovalService(FakeApprovalRepository repository)
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        return new ApprovalService(repository, new ApprovalIntentFactory(configuration, new TestHostEnvironment()));
     }
 
     private static JsonElement Payload(SseEnvelope envelope) =>
@@ -193,8 +264,12 @@ public sealed class AgentRuntimeTests
             this.failDocsGetChunk = failDocsGetChunk;
         }
 
+        public int CallCount { get; private set; }
+
         public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default)
         {
+            CallCount++;
+
             if (step.ToolName == ToolNames.DocsGetChunk && failDocsGetChunk)
             {
                 throw new ToolbeltClientException(step.ToolName, System.Net.HttpStatusCode.InternalServerError, "chunk unavailable");
@@ -279,5 +354,51 @@ public sealed class AgentRuntimeTests
     {
         public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default) =>
             throw new ToolbeltClientException(step.ToolName, System.Net.HttpStatusCode.InternalServerError, "database password leaked internally");
+    }
+
+    private sealed class FakeApprovalRepository : IApprovalRepository
+    {
+        public ApprovalRequestRecord? CreatedApproval { get; private set; }
+
+        public AgentCheckpointRecord? CreatedCheckpoint { get; private set; }
+
+        public Task<ApprovalCreateResult> CreateApprovalWithCheckpointAsync(
+            ApprovalCreateRequest request,
+            PendingGithubIssueArgs args,
+            CancellationToken cancellationToken = default)
+        {
+            CreatedApproval = request.Approval;
+            CreatedCheckpoint = request.Checkpoint;
+            return Task.FromResult(new ApprovalCreateResult
+            {
+                Approval = request.Approval,
+                Checkpoint = request.Checkpoint,
+                Args = args
+            });
+        }
+
+        public Task<IReadOnlyList<ApprovalRequestRecord>> GetPendingApprovalsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ApprovalRequestRecord>>([]);
+
+        public Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ApprovalRequestRecord?>(null);
+
+        public Task ApproveAsync(Guid approvalId, DateTime approvedAtUtc, string approvedByUserId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class TestHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Development;
+
+        public string ApplicationName { get; set; } = "Nexus.OrchestratorApi.Tests";
+
+        public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
+
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+            new Microsoft.Extensions.FileProviders.NullFileProvider();
     }
 }

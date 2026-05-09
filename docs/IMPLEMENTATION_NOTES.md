@@ -318,3 +318,12 @@ Still out of scope through PR-05:
 - The composer uses `docs.get_chunk` `chunkText` for policy text. If chunk loading fails and `docs.search` has a snippet, the composer uses that snippet with a note that full citation text was unavailable.
 - PR-12 does not add live LLM answer generation, Semantic Kernel packages, Angular changes, approvals, checkpoints, or action tools.
 - PR-13+ handles approval and action-path implementation.
+
+## PR-13 approval/checkpoint foundation convention
+
+- `src/Nexus.OrchestratorApi` owns approval/checkpoint backend APIs.
+- Action prompts containing `create` plus `issue` or `ticket` create a pending `ApprovalRequest` and `AgentCheckpoint` for `github.create_issue`.
+- Approval and checkpoint inserts use the existing `dbo.ApprovalRequest` and `dbo.AgentCheckpoint` tables in a single transaction.
+- `X-Nexus-UserId` is used as the demo user id when present; otherwise `demo-user` is used.
+- `GET /api/approvals/pending`, `POST /api/approvals/{approvalId}/approve`, and `POST /api/approvals/{approvalId}/reject` are implemented in OrchestratorApi.
+- Approve/reject update status only. PR-13 does not resume workflows, execute GitHub issue creation, add approval UI, or add audit endpoints.

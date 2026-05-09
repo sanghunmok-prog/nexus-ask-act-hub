@@ -72,6 +72,13 @@ CREATE TABLE dbo.ApprovalRequest (
 );
 ```
 
+PR-13 status values:
+- `Pending`
+- `Approved`
+- `Rejected`
+
+PR-13 stores rejection as status only. Detailed rejection actor/time metadata can be added later through audit or schema changes.
+
 ### AgentCheckpoint
 ```sql
 CREATE TABLE dbo.AgentCheckpoint (
@@ -84,6 +91,10 @@ CREATE TABLE dbo.AgentCheckpoint (
   LastToolCallId UNIQUEIDENTIFIER NULL
 );
 ```
+
+PR-13 status values:
+- `WaitingApproval`
+- `Failed`
 
 ## Notes
 - VECTOR(1536) is the initial embedding dimension choice from the reference doc.
