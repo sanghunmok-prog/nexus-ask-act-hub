@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Nexus.Contracts;
+using Nexus.OrchestratorApi.Approvals;
 
 namespace Nexus.OrchestratorApi.Agent;
 
@@ -10,18 +11,25 @@ public sealed class AgentRuntime
     private readonly IChatPlanner planner;
     private readonly IToolbeltClient toolbeltClient;
     private readonly HybridResponseComposer responseComposer;
+    private readonly ApprovalService? approvalService;
 
-    public AgentRuntime(IChatPlanner planner, IToolbeltClient toolbeltClient, HybridResponseComposer? responseComposer = null)
+    public AgentRuntime(
+        IChatPlanner planner,
+        IToolbeltClient toolbeltClient,
+        HybridResponseComposer? responseComposer = null,
+        ApprovalService? approvalService = null)
     {
         this.planner = planner;
         this.toolbeltClient = toolbeltClient;
         this.responseComposer = responseComposer ?? new HybridResponseComposer();
+        this.approvalService = approvalService;
     }
 
     public async Task<IReadOnlyList<SseEnvelope>> RunAsync(
         string prompt,
         Guid correlationId,
         Func<SseEnvelope, CancellationToken, Task> emitAsync,
+        string requestedByUserId = "demo-user",
         CancellationToken cancellationToken = default)
     {
         var emitted = new List<SseEnvelope>();
@@ -39,6 +47,12 @@ public sealed class AgentRuntime
             {
                 prompt
             });
+
+        if (approvalService is not null && approvalService.IsActionIntent(prompt))
+        {
+            await RunApprovalIntentAsync(requestedByUserId);
+            return emitted;
+        }
 
         var plan = await planner.PlanAsync(prompt, cancellationToken);
         if (!plan.Succeeded)
@@ -180,6 +194,74 @@ public sealed class AgentRuntime
                     code = "TOOLBELT_CALL_FAILED",
                     message = "Full citation chunk could not be loaded."
                 });
+
+        async Task RunApprovalIntentAsync(string userId)
+        {
+            var argsPreview = approvalService.CreateGitHubIssueArgs();
+
+            await Emit(
+                "tool.call",
+                new
+                {
+                    toolName = ApprovalIntentFactory.GitHubCreateIssueToolName,
+                    sanitizedArgs = argsPreview,
+                    requiresApproval = true
+                });
+
+            ApprovalCreateResult result;
+            try
+            {
+                result = await approvalService.CreateGitHubIssueApprovalAsync(
+                    prompt,
+                    correlationId,
+                    userId,
+                    cancellationToken);
+            }
+            catch (ApprovalPersistenceException)
+            {
+                await EmitSanitizedError(
+                    "APPROVAL_PERSISTENCE_FAILED",
+                    "Approval request could not be saved.",
+                    ApprovalIntentFactory.GitHubCreateIssueToolName);
+                await EmitDone(success: false);
+                return;
+            }
+
+            await Emit(
+                "checkpoint.saved",
+                new
+                {
+                    checkpointId = result.Checkpoint.CheckpointId,
+                    approvalId = result.Approval.ApprovalId,
+                    status = result.Checkpoint.Status
+                });
+
+            await Emit(
+                "approval.required",
+                new
+                {
+                    approvalId = result.Approval.ApprovalId,
+                    toolName = result.Approval.ToolName,
+                    riskSummary = result.Approval.RiskSummary,
+                    @params = new
+                    {
+                        repo = result.Args.Repo,
+                        title = result.Args.Title,
+                        labels = result.Args.Labels
+                    }
+                });
+
+            await Emit(
+                "assistant.message",
+                new
+                {
+                    message = "Approval is required before creating the GitHub issue. No external action has been executed. Workflow resume and action execution will be added in a later PR.",
+                    approvalId = result.Approval.ApprovalId,
+                    resumeAvailable = false
+                });
+
+            await EmitDone(success: true);
+        }
     }
 
     private static bool TryCreateDocsGetChunkStep(JsonElement docsSearchResult, out ToolPlanStep step)

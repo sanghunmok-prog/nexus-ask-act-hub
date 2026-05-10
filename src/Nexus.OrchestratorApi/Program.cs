@@ -1,5 +1,6 @@
 using Nexus.Embeddings;
 using Nexus.OrchestratorApi.Agent;
+using Nexus.OrchestratorApi.Approvals;
 using Nexus.OrchestratorApi.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +13,9 @@ builder.Services.AddSingleton<DocumentEmbeddingService>();
 builder.Services.AddSingleton<IEmbeddingProvider, MockEmbeddingProvider>();
 builder.Services.AddSingleton<IDocumentIngestionRepository, SqlDocumentIngestionRepository>();
 builder.Services.AddSingleton<IDocumentEmbeddingRepository, SqlDocumentIngestionRepository>();
+builder.Services.AddSingleton<ApprovalIntentFactory>();
+builder.Services.AddSingleton<ApprovalService>();
+builder.Services.AddSingleton<IApprovalRepository, SqlApprovalRepository>();
 builder.Services.AddSingleton<IChatPlanner>(services => ChatPlannerFactory.Create(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddHttpClient<IToolbeltClient, HttpToolbeltClient>();
 builder.Services.AddSingleton<HybridResponseComposer>();
@@ -66,6 +70,79 @@ app.MapPost("/api/documents/{docId:guid}/ingest", async (
         : Results.Json(result.Error, statusCode: result.StatusCode);
 });
 
+app.MapGet("/api/approvals/pending", async (
+    ApprovalService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await service.GetPendingApprovalsAsync(cancellationToken));
+    }
+    catch
+    {
+        return Results.Json(
+            new ApprovalErrorResponse
+            {
+                Code = "APPROVAL_PERSISTENCE_FAILED",
+                Message = "Approval requests could not be loaded."
+            },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/approvals/{approvalId:guid}/approve", async (
+    Guid approvalId,
+    HttpContext context,
+    ApprovalService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await service.ApproveAsync(
+            approvalId,
+            ResolveUserId(context.Request),
+            cancellationToken);
+
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch
+    {
+        return Results.Json(
+            new ApprovalErrorResponse
+            {
+                Code = "APPROVAL_PERSISTENCE_FAILED",
+                Message = "Approval request could not be updated."
+            },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/approvals/{approvalId:guid}/reject", async (
+    Guid approvalId,
+    ApprovalService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await service.RejectAsync(approvalId, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch
+    {
+        return Results.Json(
+            new ApprovalErrorResponse
+            {
+                Code = "APPROVAL_PERSISTENCE_FAILED",
+                Message = "Approval request could not be updated."
+            },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/api/chat/stream", async (
     HttpContext context,
     AgentRuntime runtime,
@@ -85,8 +162,15 @@ app.MapPost("/api/chat/stream", async (
         prompt,
         correlationId,
         (envelope, cancellationToken) => eventWriter.WriteAsync(context.Response, envelope, cancellationToken),
+        ResolveUserId(context.Request),
         context.RequestAborted);
 });
+
+static string ResolveUserId(HttpRequest request)
+{
+    var userId = request.Headers["X-Nexus-UserId"].FirstOrDefault();
+    return string.IsNullOrWhiteSpace(userId) ? "demo-user" : userId.Trim();
+}
 
 app.Run();
 
