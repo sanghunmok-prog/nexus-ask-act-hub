@@ -3,10 +3,11 @@ import { AssistantMessagePayload, ChatStreamEnvelope } from './chat/chat-stream.
 import { ChatStreamService } from './chat/chat-stream.service';
 import { PromptComposerComponent } from './chat/prompt-composer.component';
 import { TraceTimelineComponent } from './chat/trace-timeline.component';
+import { ApprovalPanelComponent } from './approvals/approval-panel.component';
 
 @Component({
   selector: 'app-root',
-  imports: [PromptComposerComponent, TraceTimelineComponent],
+  imports: [PromptComposerComponent, TraceTimelineComponent, ApprovalPanelComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -15,6 +16,7 @@ export class App {
   private abortController: AbortController | null = null;
 
   protected readonly events = signal<ChatStreamEnvelope[]>([]);
+  protected readonly approvalRefreshVersion = signal(0);
   protected readonly active = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly finalMessage = computed(() => {
@@ -33,6 +35,9 @@ export class App {
     try {
       for await (const event of this.chatStream.stream(prompt, this.abortController.signal)) {
         this.events.update((events) => [...events, event]);
+        if (event.eventType === 'approval.required') {
+          this.approvalRefreshVersion.update((version) => version + 1);
+        }
       }
     } catch (error) {
       if (!this.abortController.signal.aborted) {

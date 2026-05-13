@@ -72,12 +72,12 @@ CREATE TABLE dbo.ApprovalRequest (
 );
 ```
 
-PR-13 status values:
+Status values:
 - `Pending`
 - `Approved`
 - `Rejected`
 
-PR-13 stores rejection as status only. Detailed rejection actor/time metadata can be added later through audit or schema changes.
+Rejection is stored as status only. Detailed rejection actor/time metadata can be added later through audit or schema changes.
 
 ### AgentCheckpoint
 ```sql
@@ -92,9 +92,12 @@ CREATE TABLE dbo.AgentCheckpoint (
 );
 ```
 
-PR-13 status values:
+Status values:
 - `WaitingApproval`
+- `ReadyToResume`
 - `Failed`
+
+`ReadyToResume` is an internal future execution readiness state. In PR-14, approve marks a related `WaitingApproval` checkpoint `ReadyToResume`; reject marks a related `WaitingApproval` checkpoint `Failed`. PR-14 does not resume workflow execution, expose a public resume endpoint, execute GitHub, or execute any external action. `resumeAvailable` remains false. PR-16 will add GitHub create issue execution.
 
 ## Notes
 - VECTOR(1536) is the initial embedding dimension choice from the reference doc.

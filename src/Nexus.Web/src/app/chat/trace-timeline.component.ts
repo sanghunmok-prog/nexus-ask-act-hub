@@ -1,6 +1,7 @@
 import { Component, Input } from '@angular/core';
 import { DateLabelPipe } from '../date-label.pipe';
 import {
+  ApprovalRequiredPayload,
   AssistantMessagePayload,
   ChatStreamEnvelope,
   ToolCallPayload,
@@ -25,7 +26,12 @@ import {
             @switch (event.eventType) {
               @case ('tool.call') {
                 <div class="event__body">
-                  <div><strong>Tool:</strong> {{ toolCall(event).toolName || 'unknown' }}</div>
+                  <div class="tool-line">
+                    <span><strong>Tool:</strong> {{ toolCall(event).toolName || 'unknown' }}</span>
+                    @if (toolCall(event).requiresApproval) {
+                      <span class="approval-badge">Approval required</span>
+                    }
+                  </div>
                   <pre>{{ pretty(toolCall(event).sanitizedArgs || {}) }}</pre>
                 </div>
               }
@@ -62,6 +68,35 @@ import {
                       }
                     </ul>
                   }
+                </div>
+              }
+              @case ('approval.required') {
+                <div class="event__body approval-required">
+                  <div class="approval-required__header">
+                    <span class="approval-badge">Approval required</span>
+                    <strong>{{ approvalRequired(event).toolName || 'unknown tool' }}</strong>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Approval ID</dt>
+                      <dd>{{ approvalRequired(event).approvalId || 'unknown' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Repo</dt>
+                      <dd>{{ approvalRequired(event).params?.repo || 'unknown' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Title</dt>
+                      <dd>{{ approvalRequired(event).params?.title || 'unknown' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Labels</dt>
+                      <dd>{{ labelText(approvalRequired(event).params?.labels) }}</dd>
+                    </div>
+                  </dl>
+                  <p>{{ approvalRequired(event).riskSummary || 'Approval is required.' }}</p>
+                  <p>No external action has been executed.</p>
+                  <p>Use the pending approvals panel to approve or reject.</p>
                 </div>
               }
               @case ('workflow.started') {
@@ -105,6 +140,14 @@ export class TraceTimelineComponent {
 
   assistantMessage(event: ChatStreamEnvelope): AssistantMessagePayload {
     return event.payload as AssistantMessagePayload;
+  }
+
+  approvalRequired(event: ChatStreamEnvelope): ApprovalRequiredPayload {
+    return event.payload as ApprovalRequiredPayload;
+  }
+
+  labelText(labels: string[] | null | undefined): string {
+    return labels && labels.length > 0 ? labels.join(', ') : 'None';
   }
 
   messageFromPayload(payload: unknown, fallback: string): string {

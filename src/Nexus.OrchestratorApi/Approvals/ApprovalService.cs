@@ -95,13 +95,25 @@ public sealed class ApprovalService
             return ApprovalDecisionResult.NotPending();
         }
 
-        await repository.ApproveAsync(approvalId, DateTime.UtcNow, approvedByUserId, cancellationToken);
+        var approved = await repository.ApproveAsync(
+            approvalId,
+            approval.CorrelationId,
+            DateTime.UtcNow,
+            approvedByUserId,
+            cancellationToken);
+
+        if (!approved)
+        {
+            return ApprovalDecisionResult.NotPending();
+        }
+
         return ApprovalDecisionResult.Success(new ApprovalDecisionResponse
         {
             ApprovalId = approvalId,
             Status = ApprovalStatuses.Approved,
+            CheckpointStatus = CheckpointStatuses.ReadyToResume,
             ResumeAvailable = false,
-            Message = "Approval recorded. Workflow resume will be implemented in a later PR."
+            Message = "Approval recorded. The checkpoint is marked ready for future resume. No external action has been executed."
         });
     }
 
@@ -118,11 +130,17 @@ public sealed class ApprovalService
             return ApprovalDecisionResult.NotPending();
         }
 
-        await repository.RejectAsync(approvalId, approval.CorrelationId, cancellationToken);
+        var rejected = await repository.RejectAsync(approvalId, approval.CorrelationId, cancellationToken);
+        if (!rejected)
+        {
+            return ApprovalDecisionResult.NotPending();
+        }
+
         return ApprovalDecisionResult.Success(new ApprovalDecisionResponse
         {
             ApprovalId = approvalId,
             Status = ApprovalStatuses.Rejected,
+            CheckpointStatus = CheckpointStatuses.Failed,
             ResumeAvailable = false,
             Message = "Approval rejected. No external action was executed."
         });

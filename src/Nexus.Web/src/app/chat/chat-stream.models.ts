@@ -9,6 +9,7 @@ export type ChatStreamPayload =
   | WorkflowStartedPayload
   | ToolCallPayload
   | ToolResultPayload
+  | ApprovalRequiredPayload
   | AssistantMessagePayload
   | ErrorPayload
   | DonePayload
@@ -29,6 +30,17 @@ export interface ToolResultPayload {
   rowCount?: number;
   citationCount?: number;
   summary?: string;
+}
+
+export interface ApprovalRequiredPayload {
+  approvalId?: string;
+  toolName?: string;
+  riskSummary?: string;
+  params?: {
+    repo?: string;
+    title?: string;
+    labels?: string[];
+  };
 }
 
 export interface Citation {

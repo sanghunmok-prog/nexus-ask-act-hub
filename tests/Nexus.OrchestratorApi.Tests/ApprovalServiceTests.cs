@@ -28,16 +28,21 @@ public sealed class ApprovalServiceTests
     public async Task Approve_transitions_pending_to_approved()
     {
         var approval = CreateApproval(status: ApprovalStatuses.Pending);
+        var checkpoint = CreateCheckpoint(approval.CorrelationId, CheckpointStatuses.WaitingApproval);
         var repository = new FakeApprovalRepository();
         repository.Approvals[approval.ApprovalId] = approval;
+        repository.Checkpoints[checkpoint.CheckpointId] = checkpoint;
 
         var result = await CreateService(repository).ApproveAsync(approval.ApprovalId, "approver-1");
 
         Assert.True(result.Succeeded);
         Assert.Equal(ApprovalStatuses.Approved, result.Response?.Status);
+        Assert.Equal(CheckpointStatuses.ReadyToResume, result.Response?.CheckpointStatus);
         Assert.False(result.Response?.ResumeAvailable);
+        Assert.Contains("No external action has been executed", result.Response?.Message);
         Assert.Equal(ApprovalStatuses.Approved, repository.Approvals[approval.ApprovalId].Status);
         Assert.Equal("approver-1", repository.Approvals[approval.ApprovalId].ApprovedByUserId);
+        Assert.Equal(CheckpointStatuses.ReadyToResume, repository.Checkpoints[checkpoint.CheckpointId].Status);
     }
 
     [Fact]
@@ -53,6 +58,8 @@ public sealed class ApprovalServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Equal(ApprovalStatuses.Rejected, result.Response?.Status);
+        Assert.Equal(CheckpointStatuses.Failed, result.Response?.CheckpointStatus);
+        Assert.False(result.Response?.ResumeAvailable);
         Assert.Equal("Approval rejected. No external action was executed.", result.Response?.Message);
         Assert.Equal(ApprovalStatuses.Rejected, repository.Approvals[approval.ApprovalId].Status);
         Assert.Equal(CheckpointStatuses.Failed, repository.Checkpoints[checkpoint.CheckpointId].Status);
@@ -187,24 +194,46 @@ public sealed class ApprovalServiceTests
         public Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Approvals.GetValueOrDefault(approvalId));
 
-        public Task ApproveAsync(
+        public Task<bool> ApproveAsync(
             Guid approvalId,
+            Guid correlationId,
             DateTime approvedAtUtc,
             string approvedByUserId,
             CancellationToken cancellationToken = default)
         {
             var approval = Approvals[approvalId];
+            if (approval.Status != ApprovalStatuses.Pending)
+            {
+                return Task.FromResult(false);
+            }
+
             Approvals[approvalId] = approval with
             {
                 Status = ApprovalStatuses.Approved,
                 ApprovedAtUtc = approvedAtUtc,
                 ApprovedByUserId = approvedByUserId
             };
-            return Task.CompletedTask;
+
+            foreach (var checkpoint in Checkpoints.Values.Where(checkpoint =>
+                         checkpoint.CorrelationId == correlationId &&
+                         checkpoint.Status == CheckpointStatuses.WaitingApproval))
+            {
+                Checkpoints[checkpoint.CheckpointId] = checkpoint with
+                {
+                    Status = CheckpointStatuses.ReadyToResume
+                };
+            }
+
+            return Task.FromResult(true);
         }
 
-        public Task RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default)
+        public Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default)
         {
+            if (Approvals[approvalId].Status != ApprovalStatuses.Pending)
+            {
+                return Task.FromResult(false);
+            }
+
             Approvals[approvalId] = Approvals[approvalId] with
             {
                 Status = ApprovalStatuses.Rejected
@@ -220,7 +249,7 @@ public sealed class ApprovalServiceTests
                 };
             }
 
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 

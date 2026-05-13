@@ -3,9 +3,23 @@ import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ approvals: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      )
+    );
+
     await TestBed.configureTestingModule({
       imports: [App],
     }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('should create the app', () => {
