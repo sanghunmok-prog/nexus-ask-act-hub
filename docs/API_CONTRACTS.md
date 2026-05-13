@@ -235,7 +235,7 @@ Current minimal request body:
 - The current frontend consumption pattern is `fetch + ReadableStream`.
 - Do not assume `EventSource` as the primary client for this endpoint because the current contract is POST-based.
 
-### PR-14 behavior
+### PR-15 behavior
 
 `POST /api/chat/stream` uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
 - `docs.search`
@@ -254,11 +254,16 @@ PR-14 approval decisions update the related checkpoint only:
 
 PR-14 does not call GitHub, execute Toolbelt action tools, resume workflow execution, or add a public resume endpoint. PR-16 will add GitHub create issue execution.
 
+PR-15 adds bounded read-path correction for recoverable `db.query_readonly` schema/allowlist errors. The default retry budget is 1 correction retry, with at most 2 total `db.query_readonly` attempts. Correction is deterministic in mock mode and still sends a corrected `StructuredQuery` through the existing Toolbelt `db.query_readonly` path. It does not generate raw SQL and does not bypass QuerySafety.
+
+Correction does not apply to external actions. PR-15 does not execute GitHub, does not resume `ReadyToResume` checkpoints, and does not add any public resume endpoint. GitHub issue execution remains PR-16.
+
 ### SSE event types
 
-Allowed PR-14 event types:
+Allowed PR-15 event types:
 - `workflow.started`
 - `tool.call`
+- `tool.retry`
 - `tool.result`
 - `checkpoint.saved`
 - `approval.required`
@@ -313,6 +318,19 @@ tool.result
   "result": {}
 }
 ```
+
+tool.retry
+```json
+{
+  "toolName": "db.query_readonly",
+  "attempt": 2,
+  "maxAttempts": 2,
+  "reason": "schema_correction",
+  "message": "Retrying db.query_readonly with a schema-corrected StructuredQuery."
+}
+```
+
+`tool.retry` is a sanitized operational trace event. It must not expose chain-of-thought, hidden reasoning, raw SQL, stack traces, secrets, connection strings, or internal prompts.
 
 checkpoint.saved
 ```json

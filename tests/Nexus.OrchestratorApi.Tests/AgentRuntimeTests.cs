@@ -162,6 +162,85 @@ public sealed class AgentRuntimeTests
     }
 
     [Fact]
+    public async Task Recoverable_db_query_validation_error_retries_once_with_corrected_query()
+    {
+        var toolbeltClient = new RecoverableDbQueryFailureToolbeltClient(failRetry: false);
+        var emitted = await RunAsync(
+            toolbeltClient,
+            prompt: "Show delayed shipments and cite the relevant policy with correction retry.");
+
+        Assert.Equal(2, toolbeltClient.DbQueryAttempts);
+        Assert.Equal("ExpectedShipDate", toolbeltClient.DbQueries[0].Select[2]);
+        Assert.Equal("ExpectedShipDateUtc", toolbeltClient.DbQueries[1].Select[2]);
+        Assert.Equal("ExpectedShipDateUtc", Assert.Single(toolbeltClient.DbQueries[1].OrderBy).Column);
+
+        var retry = Assert.Single(emitted, envelope => envelope.EventType == "tool.retry");
+        var retryPayload = Payload(retry);
+        Assert.Equal(ToolNames.DbQueryReadonly, retryPayload.GetProperty("toolName").GetString());
+        Assert.Equal(2, retryPayload.GetProperty("attempt").GetInt32());
+        Assert.Equal(2, retryPayload.GetProperty("maxAttempts").GetInt32());
+        Assert.Equal("schema_correction", retryPayload.GetProperty("reason").GetString());
+
+        Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("## Delayed orders"));
+        Assert.Equal("done", emitted.Last().EventType);
+        Assert.True(Payload(emitted.Last()).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Retry_budget_prevents_third_db_query_attempt_when_correction_fails()
+    {
+        var toolbeltClient = new RecoverableDbQueryFailureToolbeltClient(failRetry: true);
+        var emitted = await RunAsync(
+            toolbeltClient,
+            prompt: "Show delayed shipments and cite the relevant policy with correction retry.");
+
+        Assert.Equal(2, toolbeltClient.DbQueryAttempts);
+        Assert.Single(emitted, envelope => envelope.EventType == "tool.retry");
+        Assert.DoesNotContain(emitted, envelope => envelope.EventType == "assistant.message");
+
+        var error = Assert.Single(emitted, envelope => envelope.EventType == "error");
+        Assert.Equal("DB_QUERY_CORRECTION_FAILED", Payload(error).GetProperty("code").GetString());
+        Assert.DoesNotContain("SELECT *", PayloadString(error), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("database password", PayloadString(error), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("connection string", PayloadString(error), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stack", PayloadString(error), StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal("done", emitted.Last().EventType);
+        Assert.False(Payload(emitted.Last()).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Non_recoverable_db_query_failure_does_not_retry()
+    {
+        var toolbeltClient = new NonRecoverableDbQueryFailureToolbeltClient();
+        var emitted = await RunAsync(toolbeltClient);
+
+        Assert.Equal(1, toolbeltClient.DbQueryAttempts);
+        Assert.DoesNotContain(emitted, envelope => envelope.EventType == "tool.retry");
+
+        var error = Assert.Single(emitted, envelope => envelope.EventType == "error");
+        Assert.Equal("TOOLBELT_CALL_FAILED", Payload(error).GetProperty("code").GetString());
+        Assert.Equal("done", emitted.Last().EventType);
+        Assert.False(Payload(emitted.Last()).GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Retry_trace_does_not_expose_raw_sql_secrets_or_stack_traces()
+    {
+        var toolbeltClient = new RecoverableDbQueryFailureToolbeltClient(failRetry: true);
+        var emitted = await RunAsync(
+            toolbeltClient,
+            prompt: "Show delayed shipments and cite the relevant policy with correction retry.");
+
+        var trace = string.Join(Environment.NewLine, emitted.Select(PayloadString));
+        Assert.DoesNotContain("SELECT *", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("database password", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("connection string", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stack trace", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("at Nexus.", trace, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Action_prompt_creates_approval_checkpoint_and_emits_approval_events()
     {
         var repository = new FakeApprovalRepository();
@@ -355,6 +434,69 @@ public sealed class AgentRuntimeTests
     {
         public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default) =>
             throw new ToolbeltClientException(step.ToolName, System.Net.HttpStatusCode.InternalServerError, "database password leaked internally");
+    }
+
+    private sealed class RecoverableDbQueryFailureToolbeltClient : IToolbeltClient
+    {
+        private readonly bool failRetry;
+        private readonly FakeToolbeltClient inner = new();
+
+        public RecoverableDbQueryFailureToolbeltClient(bool failRetry)
+        {
+            this.failRetry = failRetry;
+        }
+
+        public int DbQueryAttempts { get; private set; }
+
+        public List<StructuredQuery> DbQueries { get; } = [];
+
+        public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default)
+        {
+            if (step.ToolName != ToolNames.DbQueryReadonly)
+            {
+                return inner.CallAsync(step, cancellationToken);
+            }
+
+            DbQueryAttempts++;
+            var query = Assert.IsType<StructuredQuery>(step.Args);
+            DbQueries.Add(query);
+
+            if (DbQueryAttempts == 1 || failRetry)
+            {
+                throw new ToolbeltClientException(
+                    step.ToolName,
+                    System.Net.HttpStatusCode.BadRequest,
+                    "Toolbelt returned an unsuccessful status code.",
+                    "QUERY_VALIDATION_FAILED",
+                    "StructuredQuery failed validation.",
+                    ["Select column 'ExpectedShipDate' is not allowlisted. SELECT * with database password should not leak."]);
+            }
+
+            return inner.CallAsync(step, cancellationToken);
+        }
+    }
+
+    private sealed class NonRecoverableDbQueryFailureToolbeltClient : IToolbeltClient
+    {
+        private readonly FakeToolbeltClient inner = new();
+
+        public int DbQueryAttempts { get; private set; }
+
+        public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default)
+        {
+            if (step.ToolName != ToolNames.DbQueryReadonly)
+            {
+                return inner.CallAsync(step, cancellationToken);
+            }
+
+            DbQueryAttempts++;
+            throw new ToolbeltClientException(
+                step.ToolName,
+                System.Net.HttpStatusCode.InternalServerError,
+                "Toolbelt returned an unsuccessful status code.",
+                "SQL_CONNECTION_NOT_CONFIGURED",
+                "SQL connection string is not configured.");
+        }
     }
 
     private sealed class FakeApprovalRepository : IApprovalRepository

@@ -233,6 +233,21 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - PR-16 will add GitHub create issue execution.
 - Approval UI errors must remain sanitized and must not display stack traces, secrets, connection strings, or raw internal exceptions.
 
+## PR-15 bounded correction safety
+
+- PR-15 adds bounded read-path correction for recoverable `db.query_readonly` schema/allowlist errors only.
+- The default retry budget is 1 correction retry.
+- At most 2 total `db.query_readonly` attempts are allowed.
+- Correction is deterministic in mock mode.
+- Correction produces a `StructuredQuery`; it does not generate raw SQL and does not bypass QuerySafety.
+- The corrected query still goes through the Toolbelt `db.query_readonly` path.
+- `tool.retry` is a sanitized operational trace event.
+- No chain-of-thought, raw SQL, stack traces, secrets, connection strings, or internal prompts may be exposed in retry traces or errors.
+- Correction does not apply to external actions.
+- PR-15 does not execute GitHub.
+- PR-15 does not resume `ReadyToResume` checkpoints.
+- GitHub issue execution remains PR-16.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:

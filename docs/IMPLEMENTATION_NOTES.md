@@ -283,6 +283,25 @@ Still out of scope through PR-05:
 - `resumeAvailable` remains false.
 - PR-16 will add GitHub create issue execution.
 
+## PR-15 bounded read-path correction convention
+
+- PR-15 adds bounded read-path correction for recoverable `db.query_readonly` schema/allowlist errors.
+- Recoverable errors are limited to schema/query-shape validation failures such as unknown or non-allowlisted table/column mismatches.
+- Non-recoverable failures such as SQL connection/config failures, Toolbelt unavailability, timeouts, malformed internal responses, docs failures, and unknown exceptions are not retried.
+- The default retry budget is 1 correction retry.
+- At most 2 total `db.query_readonly` attempts are allowed.
+- Attempt 3 must never occur.
+- Correction is deterministic in mock mode.
+- The mock smoke trigger is a prompt containing `correction retry`, which starts with a recoverable bad column and corrects it to the allowlisted schema column.
+- Correction produces a `StructuredQuery`; it does not generate raw SQL and does not bypass QuerySafety.
+- The corrected query still goes through the existing Toolbelt `db.query_readonly` path.
+- `tool.retry` is a sanitized operational trace event.
+- `tool.retry` and error traces must not expose chain-of-thought, raw SQL, stack traces, secrets, connection strings, or internal prompts.
+- Correction does not apply to external actions.
+- PR-15 does not execute GitHub.
+- PR-15 does not resume `ReadyToResume` checkpoints.
+- GitHub issue execution remains PR-16.
+
 ## PR-07 Toolbelt readonly query convention
 
 - Query safety code now belongs to `src/Nexus.QuerySafety`.

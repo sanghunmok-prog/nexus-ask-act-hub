@@ -75,6 +75,8 @@ PR-12 implements deterministic read-path hybrid response composition from Toolbe
 
 PR-13 implements the approval/checkpoint backend foundation. Approval UI, workflow resume, and GitHub execution remain later PRs.
 
+PR-15 adds bounded deterministic read-path correction for recoverable `db.query_readonly` schema/allowlist failures. The retry budget is 1 correction retry, with at most 2 total `db.query_readonly` attempts.
+
 ## Pipeline C — Act
 1. User requests GitHub issue creation
 2. Orchestrator identifies approval-required action
@@ -91,10 +93,13 @@ PR-13 implements steps 1-6 for backend approval/checkpoint state only. PR-14+ ad
 
 ## Pipeline D — Self-correction
 1. db.query_readonly fails
-2. get schema summary
-3. regenerate StructuredQuery
-4. retry
-5. stop after max 2 retries
+2. classify only schema/allowlist validation failures as recoverable
+3. emit sanitized tool.retry
+4. deterministically correct StructuredQuery using schema information
+5. retry db.query_readonly once
+6. stop after at most 2 total db.query_readonly attempts
+
+PR-15 correction is read-path only. It does not expose chain-of-thought, raw SQL, stack traces, secrets, or connection strings. It does not apply to external actions, does not execute GitHub, and does not resume ReadyToResume checkpoints. GitHub issue execution remains PR-16.
 
 ## Repo layout
 - README.md

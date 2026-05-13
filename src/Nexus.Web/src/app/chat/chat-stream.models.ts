@@ -8,6 +8,7 @@ export interface ChatStreamEnvelope<TPayload = ChatStreamPayload> {
 export type ChatStreamPayload =
   | WorkflowStartedPayload
   | ToolCallPayload
+  | ToolRetryPayload
   | ToolResultPayload
   | ApprovalRequiredPayload
   | AssistantMessagePayload
@@ -27,9 +28,21 @@ export interface ToolCallPayload {
 
 export interface ToolResultPayload {
   toolName?: string;
+  success?: boolean;
+  attempt?: number;
+  code?: string;
+  message?: string;
   rowCount?: number;
   citationCount?: number;
   summary?: string;
+}
+
+export interface ToolRetryPayload {
+  toolName?: string;
+  attempt?: number;
+  maxAttempts?: number;
+  reason?: string;
+  message?: string;
 }
 
 export interface ApprovalRequiredPayload {
