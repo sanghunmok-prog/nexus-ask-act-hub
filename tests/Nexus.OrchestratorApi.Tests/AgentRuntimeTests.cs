@@ -196,6 +196,7 @@ public sealed class AgentRuntimeTests
         Assert.Contains(emitted, envelope => envelope.EventType == "checkpoint.saved" && PayloadString(envelope).Contains("\"status\":\"WaitingApproval\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "approval.required" && PayloadString(envelope).Contains("\"toolName\":\"github.create_issue\"") && PayloadString(envelope).Contains("\"repo\":\"sanghunmok-prog/nexus-ask-act-hub\""));
         Assert.Contains(emitted, envelope => envelope.EventType == "assistant.message" && PayloadString(envelope).Contains("No external action has been executed."));
+        Assert.DoesNotContain(emitted, envelope => PayloadString(envelope).Contains("ReadyToResume"));
         Assert.Equal(0, toolbeltClient.CallCount);
 
         var done = emitted.Last();
@@ -383,11 +384,16 @@ public sealed class AgentRuntimeTests
         public Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default) =>
             Task.FromResult<ApprovalRequestRecord?>(null);
 
-        public Task ApproveAsync(Guid approvalId, DateTime approvedAtUtc, string approvedByUserId, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<bool> ApproveAsync(
+            Guid approvalId,
+            Guid correlationId,
+            DateTime approvedAtUtc,
+            string approvedByUserId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
 
-        public Task RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
     }
 
     private sealed class TestHostEnvironment : IHostEnvironment

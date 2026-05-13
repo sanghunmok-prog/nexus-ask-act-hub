@@ -14,6 +14,7 @@ public static class ApprovalStatuses
 public static class CheckpointStatuses
 {
     public const string WaitingApproval = "WaitingApproval";
+    public const string ReadyToResume = "ReadyToResume";
     public const string Failed = "Failed";
 }
 
@@ -135,6 +136,8 @@ public sealed record ApprovalDecisionResponse
     public required Guid ApprovalId { get; init; }
 
     public required string Status { get; init; }
+
+    public required string CheckpointStatus { get; init; }
 
     public required bool ResumeAvailable { get; init; }
 

@@ -134,7 +134,7 @@ Sanitized error codes:
 
 ## Approval contract
 
-PR-13 adds backend approval/checkpoint persistence for action intents. Approve and reject endpoints only record decisions; they do not resume workflows or execute external actions in PR-13.
+PR-14 adds the approval UI and internal ReadyToResume checkpoint scaffold. Approve and reject endpoints only record decisions and update checkpoint status; they do not resume workflows, expose a public resume endpoint, execute GitHub, or execute any external action in PR-14. `resumeAvailable` remains `false`.
 
 ### Pending approvals
 
@@ -174,10 +174,13 @@ Uses `X-Nexus-UserId` when present; otherwise records `demo-user`.
 {
   "approvalId": "00000000-0000-0000-0000-000000000000",
   "status": "Approved",
+  "checkpointStatus": "ReadyToResume",
   "resumeAvailable": false,
-  "message": "Approval recorded. Workflow resume will be implemented in a later PR."
+  "message": "Approval recorded. The checkpoint is marked ready for future resume. No external action has been executed."
 }
 ```
+
+Approval marks a related `WaitingApproval` checkpoint as `ReadyToResume` when present. `ReadyToResume` is internal future execution readiness only. It does not expose execution to the user and does not execute the pending action.
 
 ### Reject
 
@@ -189,10 +192,13 @@ Rejection records `Status = "Rejected"` and marks a related `WaitingApproval` ch
 {
   "approvalId": "00000000-0000-0000-0000-000000000000",
   "status": "Rejected",
+  "checkpointStatus": "Failed",
   "resumeAvailable": false,
   "message": "Approval rejected. No external action was executed."
 }
 ```
+
+Reject marks a related `WaitingApproval` checkpoint as `Failed` when present.
 
 ### Approval errors
 
@@ -229,7 +235,7 @@ Current minimal request body:
 - The current frontend consumption pattern is `fetch + ReadableStream`.
 - Do not assume `EventSource` as the primary client for this endpoint because the current contract is POST-based.
 
-### PR-13 behavior
+### PR-14 behavior
 
 `POST /api/chat/stream` uses the Orchestrator agent runtime. In default `LLM_MODE=mock`, the deterministic planner calls the Toolbelt HTTP shims for:
 - `docs.search`
@@ -240,11 +246,17 @@ After `docs.search` returns a top result, the runtime may dynamically call `docs
 
 PR-12 `assistant.message` contains the final deterministic hybrid answer for the read path, including delayed order rows, relevant policy text, citations, and summary counts. It does not call a live LLM.
 
-For action prompts containing `create` plus `issue` or `ticket`, PR-13 creates a pending `ApprovalRequest` and `AgentCheckpoint` for `github.create_issue`. It does not call GitHub, execute Toolbelt action tools, or resume workflow execution.
+For action prompts containing `create` plus `issue` or `ticket`, the runtime creates a pending `ApprovalRequest` and `AgentCheckpoint` for `github.create_issue`, emits `approval.required`, and stops. Initial checkpoint status is `WaitingApproval`.
+
+PR-14 approval decisions update the related checkpoint only:
+- approve: `WaitingApproval` -> `ReadyToResume`
+- reject: `WaitingApproval` -> `Failed`
+
+PR-14 does not call GitHub, execute Toolbelt action tools, resume workflow execution, or add a public resume endpoint. PR-16 will add GitHub create issue execution.
 
 ### SSE event types
 
-Allowed PR-13 event types:
+Allowed PR-14 event types:
 - `workflow.started`
 - `tool.call`
 - `tool.result`
@@ -373,7 +385,7 @@ Current PR-12 happy-path sequence when `docs.search` has a top result:
 
 When `docs.search` returns zero results, `docs.get_chunk` is not called and the final answer includes a no-policy-found section.
 
-Current PR-13 action-intent sequence:
+Current PR-14 action-intent sequence:
 
 - `workflow.started`
 - `tool.call` for `github.create_issue` intent with `requiresApproval = true`
@@ -597,6 +609,8 @@ Not found output:
 ```
 
 github.create_issue
+
+Future PR-16 Toolbelt action contract. This is not executed or exposed as an approval-driven action in PR-14.
 
 Input:
 

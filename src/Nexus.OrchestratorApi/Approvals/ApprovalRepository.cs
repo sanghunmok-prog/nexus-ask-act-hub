@@ -14,13 +14,14 @@ public interface IApprovalRepository
 
     Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default);
 
-    Task ApproveAsync(
+    Task<bool> ApproveAsync(
         Guid approvalId,
+        Guid correlationId,
         DateTime approvedAtUtc,
         string approvedByUserId,
         CancellationToken cancellationToken = default);
 
-    Task RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default);
+    Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default);
 }
 
 public sealed class SqlApprovalRepository : IApprovalRepository
@@ -126,34 +127,12 @@ public sealed class SqlApprovalRepository : IApprovalRepository
         return await reader.ReadAsync(cancellationToken) ? ReadApproval(reader) : null;
     }
 
-    public async Task ApproveAsync(
+    public async Task<bool> ApproveAsync(
         Guid approvalId,
+        Guid correlationId,
         DateTime approvedAtUtc,
         string approvedByUserId,
         CancellationToken cancellationToken = default)
-    {
-        await using var connection = await OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandTimeout = 2;
-        command.CommandText = """
-            UPDATE dbo.ApprovalRequest
-            SET
-                Status = @status,
-                ApprovedAtUtc = @approvedAtUtc,
-                ApprovedByUserId = @approvedByUserId
-            WHERE ApprovalId = @approvalId
-              AND Status = @pendingStatus;
-            """;
-        command.Parameters.Add(new SqlParameter("@status", ApprovalStatuses.Approved));
-        command.Parameters.Add(new SqlParameter("@approvedAtUtc", approvedAtUtc));
-        command.Parameters.Add(new SqlParameter("@approvedByUserId", approvedByUserId));
-        command.Parameters.Add(new SqlParameter("@approvalId", approvalId));
-        command.Parameters.Add(new SqlParameter("@pendingStatus", ApprovalStatuses.Pending));
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
         var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
@@ -161,6 +140,66 @@ public sealed class SqlApprovalRepository : IApprovalRepository
         {
             try
             {
+                int affectedRows;
+                await using (var approvalCommand = connection.CreateCommand())
+                {
+                    approvalCommand.Transaction = transaction;
+                    approvalCommand.CommandTimeout = 2;
+                    approvalCommand.CommandText = """
+                        UPDATE dbo.ApprovalRequest
+                        SET
+                            Status = @status,
+                            ApprovedAtUtc = @approvedAtUtc,
+                            ApprovedByUserId = @approvedByUserId
+                        WHERE ApprovalId = @approvalId
+                          AND Status = @pendingStatus;
+                        """;
+                    approvalCommand.Parameters.Add(new SqlParameter("@status", ApprovalStatuses.Approved));
+                    approvalCommand.Parameters.Add(new SqlParameter("@approvedAtUtc", approvedAtUtc));
+                    approvalCommand.Parameters.Add(new SqlParameter("@approvedByUserId", approvedByUserId));
+                    approvalCommand.Parameters.Add(new SqlParameter("@approvalId", approvalId));
+                    approvalCommand.Parameters.Add(new SqlParameter("@pendingStatus", ApprovalStatuses.Pending));
+
+                    affectedRows = await approvalCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                if (affectedRows == 1)
+                {
+                    await using var checkpointCommand = connection.CreateCommand();
+                    checkpointCommand.Transaction = transaction;
+                    checkpointCommand.CommandTimeout = 2;
+                    checkpointCommand.CommandText = """
+                        UPDATE dbo.AgentCheckpoint
+                        SET Status = @readyStatus
+                        WHERE CorrelationId = @correlationId
+                          AND Status = @waitingStatus;
+                        """;
+                    checkpointCommand.Parameters.Add(new SqlParameter("@readyStatus", CheckpointStatuses.ReadyToResume));
+                    checkpointCommand.Parameters.Add(new SqlParameter("@correlationId", correlationId));
+                    checkpointCommand.Parameters.Add(new SqlParameter("@waitingStatus", CheckpointStatuses.WaitingApproval));
+                    await checkpointCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return affectedRows == 1;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+    }
+
+    public async Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        await using (transaction)
+        {
+            try
+            {
+                int affectedRows;
                 await using (var approvalCommand = connection.CreateCommand())
                 {
                     approvalCommand.Transaction = transaction;
@@ -174,11 +213,12 @@ public sealed class SqlApprovalRepository : IApprovalRepository
                     approvalCommand.Parameters.Add(new SqlParameter("@status", ApprovalStatuses.Rejected));
                     approvalCommand.Parameters.Add(new SqlParameter("@approvalId", approvalId));
                     approvalCommand.Parameters.Add(new SqlParameter("@pendingStatus", ApprovalStatuses.Pending));
-                    await approvalCommand.ExecuteNonQueryAsync(cancellationToken);
+                    affectedRows = await approvalCommand.ExecuteNonQueryAsync(cancellationToken);
                 }
 
-                await using (var checkpointCommand = connection.CreateCommand())
+                if (affectedRows == 1)
                 {
+                    await using var checkpointCommand = connection.CreateCommand();
                     checkpointCommand.Transaction = transaction;
                     checkpointCommand.CommandTimeout = 2;
                     checkpointCommand.CommandText = """
@@ -194,6 +234,7 @@ public sealed class SqlApprovalRepository : IApprovalRepository
                 }
 
                 await transaction.CommitAsync(cancellationToken);
+                return affectedRows == 1;
             }
             catch
             {

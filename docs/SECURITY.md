@@ -218,6 +218,21 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - There is no auth/RBAC in PR-13. `X-Nexus-UserId` is a demo identity placeholder, with `demo-user` as the fallback.
 - Approval transitions are one-way from `Pending` to `Approved` or `Rejected`; approve/reject on non-pending approvals returns a sanitized conflict.
 
+## PR-14 approval UI and ReadyToResume safety
+
+- PR-14 adds pending approval UI and approve/reject UX.
+- AgentCheckpoint status values are `WaitingApproval`, `ReadyToResume`, and `Failed`.
+- Approve marks a related `WaitingApproval` checkpoint `ReadyToResume`.
+- Reject marks a related `WaitingApproval` checkpoint `Failed`.
+- `ReadyToResume` is internal future execution readiness only.
+- `ReadyToResume` does not expose execution to the user.
+- PR-14 does not resume workflow execution.
+- PR-14 does not execute GitHub or any external action.
+- PR-14 does not add a public resume endpoint.
+- `resumeAvailable` remains false.
+- PR-16 will add GitHub create issue execution.
+- Approval UI errors must remain sanitized and must not display stack traces, secrets, connection strings, or raw internal exceptions.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
@@ -226,7 +241,7 @@ For any tool with `requiresApproval=true`:
 2. create `AgentCheckpoint`
 3. emit `approval.required`
 4. stop workflow
-5. only resume after approve/reject endpoint decision in a later PR
+5. in PR-14, approve prepares the checkpoint as `ReadyToResume` for future support, but no public resume endpoint or execution path exists
 
 ## Ownership rule
 

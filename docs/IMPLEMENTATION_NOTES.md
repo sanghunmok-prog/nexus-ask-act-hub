@@ -259,6 +259,30 @@ Still out of scope through PR-05:
 - PR-06 projects allowlisted tables to table name plus allowlisted `select` columns only.
 - PR-06 does not execute SQL and does not implement `db.query_readonly`.
 
+## PR-14 approval UI and checkpoint scaffold convention
+
+- Angular approval UI lives under `src/Nexus.Web/src/app/approvals/`.
+- The approval panel is rendered inside the existing app left panel below the assistant answer; there is no new route or page.
+- The frontend approval service uses `fetch` for:
+  - `GET /api/approvals/pending`
+  - `POST /api/approvals/{approvalId}/approve`
+  - `POST /api/approvals/{approvalId}/reject`
+- The chat stream still uses POST `fetch + ReadableStream`; do not convert it to `EventSource`.
+- `approval.required` stream events refresh the pending approval panel and render as dedicated trace cards.
+- AgentCheckpoint status values are:
+  - `WaitingApproval`
+  - `ReadyToResume`
+  - `Failed`
+- Approve marks a related `WaitingApproval` checkpoint `ReadyToResume`.
+- Reject marks a related `WaitingApproval` checkpoint `Failed`.
+- `ReadyToResume` is internal future execution readiness only.
+- `ReadyToResume` does not expose execution to the user.
+- PR-14 does not resume workflow execution.
+- PR-14 does not execute GitHub or any external action.
+- PR-14 does not add a public resume endpoint.
+- `resumeAvailable` remains false.
+- PR-16 will add GitHub create issue execution.
+
 ## PR-07 Toolbelt readonly query convention
 
 - Query safety code now belongs to `src/Nexus.QuerySafety`.
@@ -326,4 +350,4 @@ Still out of scope through PR-05:
 - Approval and checkpoint inserts use the existing `dbo.ApprovalRequest` and `dbo.AgentCheckpoint` tables in a single transaction.
 - `X-Nexus-UserId` is used as the demo user id when present; otherwise `demo-user` is used.
 - `GET /api/approvals/pending`, `POST /api/approvals/{approvalId}/approve`, and `POST /api/approvals/{approvalId}/reject` are implemented in OrchestratorApi.
-- Approve/reject update status only. PR-13 does not resume workflows, execute GitHub issue creation, add approval UI, or add audit endpoints.
+- PR-13 approve/reject updated approval status only. PR-14 adds approval UI and related checkpoint status updates, but still does not resume workflows, execute GitHub issue creation, or add audit endpoints.
