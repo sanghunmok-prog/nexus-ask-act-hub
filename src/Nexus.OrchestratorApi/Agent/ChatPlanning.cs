@@ -47,9 +47,10 @@ public sealed record ToolPlanStep
 public sealed class MockChatPlanner : IChatPlanner
 {
     public Task<PlannerResult> PlanAsync(string prompt, CancellationToken cancellationToken = default) =>
-        Task.FromResult(PlannerResult.Success(DemoDelayedShipmentsPolicyPlan()));
+        Task.FromResult(PlannerResult.Success(DemoDelayedShipmentsPolicyPlan(
+            prompt.Contains("correction retry", StringComparison.OrdinalIgnoreCase))));
 
-    private static IReadOnlyList<ToolPlanStep> DemoDelayedShipmentsPolicyPlan() =>
+    private static IReadOnlyList<ToolPlanStep> DemoDelayedShipmentsPolicyPlan(bool useRecoverableBadColumn) =>
     [
         new ToolPlanStep
         {
@@ -81,7 +82,7 @@ public sealed class MockChatPlanner : IChatPlanner
                 [
                     "OrderId",
                     "Status",
-                    "ExpectedShipDateUtc",
+                    useRecoverableBadColumn ? "ExpectedShipDate" : "ExpectedShipDateUtc",
                     "ActualShipDateUtc",
                     "Carrier",
                     "DelayReason"
@@ -99,7 +100,7 @@ public sealed class MockChatPlanner : IChatPlanner
                 [
                     new StructuredQueryOrderBy
                     {
-                        Column = "ExpectedShipDateUtc",
+                        Column = useRecoverableBadColumn ? "ExpectedShipDate" : "ExpectedShipDateUtc",
                         Dir = "desc"
                     }
                 ],

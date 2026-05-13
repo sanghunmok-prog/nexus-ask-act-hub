@@ -13,16 +13,31 @@ public sealed record ToolbeltToolResult(string ToolName, JsonElement RawJson);
 
 public sealed class ToolbeltClientException : Exception
 {
-    public ToolbeltClientException(string toolName, HttpStatusCode? statusCode, string message)
+    public ToolbeltClientException(
+        string toolName,
+        HttpStatusCode? statusCode,
+        string message,
+        string? errorCode = null,
+        string? errorMessage = null,
+        IReadOnlyList<string>? errorDetails = null)
         : base(message)
     {
         ToolName = toolName;
         StatusCode = statusCode;
+        ErrorCode = errorCode;
+        ErrorMessage = errorMessage;
+        ErrorDetails = errorDetails ?? [];
     }
 
     public string ToolName { get; }
 
     public HttpStatusCode? StatusCode { get; }
+
+    public string? ErrorCode { get; }
+
+    public string? ErrorMessage { get; }
+
+    public IReadOnlyList<string> ErrorDetails { get; }
 }
 
 public sealed class ToolbeltConfigurationException : Exception
@@ -65,10 +80,14 @@ public sealed class HttpToolbeltClient : IToolbeltClient
 
         if (!response.IsSuccessStatusCode)
         {
+            var error = TryReadToolError(responseText);
             throw new ToolbeltClientException(
                 step.ToolName,
                 response.StatusCode,
-                "Toolbelt returned an unsuccessful status code.");
+                "Toolbelt returned an unsuccessful status code.",
+                error.Code,
+                error.Message,
+                error.Errors);
         }
 
         if (string.IsNullOrWhiteSpace(responseText))
@@ -110,4 +129,42 @@ public sealed class HttpToolbeltClient : IToolbeltClient
             ? new Uri("http://localhost:5062", UriKind.Absolute)
             : null;
     }
+
+    private static ToolbeltError TryReadToolError(string responseText)
+    {
+        if (string.IsNullOrWhiteSpace(responseText))
+        {
+            return new ToolbeltError(null, null, []);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseText);
+            var root = document.RootElement;
+            var code = TryReadString(root, "code");
+            var message = TryReadString(root, "message");
+            var errors = root.TryGetProperty("errors", out var errorsProperty) &&
+                errorsProperty.ValueKind == JsonValueKind.Array
+                    ? errorsProperty.EnumerateArray()
+                        .Where(error => error.ValueKind == JsonValueKind.String)
+                        .Select(error => error.GetString())
+                        .Where(error => !string.IsNullOrWhiteSpace(error))
+                        .Select(error => error!)
+                        .ToArray()
+                    : [];
+
+            return new ToolbeltError(code, message, errors);
+        }
+        catch (JsonException)
+        {
+            return new ToolbeltError(null, null, []);
+        }
+    }
+
+    private static string? TryReadString(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+
+    private sealed record ToolbeltError(string? Code, string? Message, IReadOnlyList<string> Errors);
 }

@@ -5,6 +5,7 @@ import {
   AssistantMessagePayload,
   ChatStreamEnvelope,
   ToolCallPayload,
+  ToolRetryPayload,
   ToolResultPayload
 } from './chat-stream.models';
 
@@ -36,21 +37,64 @@ import {
                 </div>
               }
               @case ('tool.result') {
-                <div class="event__body">
+                <div class="event__body" [class.failed-result]="toolResult(event).success === false">
                   <div><strong>Tool:</strong> {{ toolResult(event).toolName || 'unknown' }}</div>
+                  @if (toolResult(event).success === false) {
+                    <dl>
+                      <div>
+                        <dt>Status</dt>
+                        <dd>Failed</dd>
+                      </div>
+                      @if (toolResult(event).attempt !== undefined) {
+                        <div>
+                          <dt>Attempt</dt>
+                          <dd>{{ toolResult(event).attempt }}</dd>
+                        </div>
+                      }
+                      @if (safeText(toolResult(event).code)) {
+                        <div>
+                          <dt>Code</dt>
+                          <dd>{{ safeText(toolResult(event).code) }}</dd>
+                        </div>
+                      }
+                    </dl>
+                    @if (safeText(toolResult(event).message)) {
+                      <p>{{ safeText(toolResult(event).message) }}</p>
+                    }
+                  } @else {
+                    <dl>
+                      <div>
+                        <dt>Rows</dt>
+                        <dd>{{ toolResult(event).rowCount ?? 0 }}</dd>
+                      </div>
+                      <div>
+                        <dt>Citations</dt>
+                        <dd>{{ toolResult(event).citationCount ?? 0 }}</dd>
+                      </div>
+                    </dl>
+                    @if (toolResult(event).summary) {
+                      <p>{{ toolResult(event).summary }}</p>
+                    }
+                  }
+                </div>
+              }
+              @case ('tool.retry') {
+                <div class="event__body retry-event">
+                  <div class="retry-event__header">
+                    <span class="retry-badge">Retry</span>
+                    <strong>{{ toolRetry(event).toolName || 'unknown tool' }}</strong>
+                  </div>
                   <dl>
                     <div>
-                      <dt>Rows</dt>
-                      <dd>{{ toolResult(event).rowCount ?? 0 }}</dd>
+                      <dt>Attempt</dt>
+                      <dd>{{ toolRetry(event).attempt ?? 0 }} / {{ toolRetry(event).maxAttempts ?? 0 }}</dd>
                     </div>
                     <div>
-                      <dt>Citations</dt>
-                      <dd>{{ toolResult(event).citationCount ?? 0 }}</dd>
+                      <dt>Reason</dt>
+                      <dd>{{ toolRetry(event).reason || 'unknown' }}</dd>
                     </div>
                   </dl>
-                  @if (toolResult(event).summary) {
-                    <p>{{ toolResult(event).summary }}</p>
-                  }
+                  <p>{{ toolRetry(event).message || 'Retrying tool call.' }}</p>
                 </div>
               }
               @case ('assistant.message') {
@@ -138,6 +182,10 @@ export class TraceTimelineComponent {
     return event.payload as ToolResultPayload;
   }
 
+  toolRetry(event: ChatStreamEnvelope): ToolRetryPayload {
+    return event.payload as ToolRetryPayload;
+  }
+
   assistantMessage(event: ChatStreamEnvelope): AssistantMessagePayload {
     return event.payload as AssistantMessagePayload;
   }
@@ -164,5 +212,29 @@ export class TraceTimelineComponent {
 
   pretty(value: unknown): string {
     return JSON.stringify(value ?? {}, null, 2);
+  }
+
+  safeText(value: string | null | undefined): string {
+    if (!value) {
+      return '';
+    }
+
+    const unsafePatterns = [
+      /select\s+.+\s+from/i,
+      /insert\s+into/i,
+      /update\s+.+\s+set/i,
+      /delete\s+from/i,
+      /connection string/i,
+      /password/i,
+      /secret/i,
+      /stack trace/i,
+      /\bat\s+\S+\(/i
+    ];
+
+    if (unsafePatterns.some((pattern) => pattern.test(value))) {
+      return 'Tool failure details were withheld.';
+    }
+
+    return value.length > 220 ? `${value.slice(0, 220).trimEnd()}...` : value;
   }
 }

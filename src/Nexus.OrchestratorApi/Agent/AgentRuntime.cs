@@ -12,6 +12,7 @@ public sealed class AgentRuntime
     private readonly IToolbeltClient toolbeltClient;
     private readonly HybridResponseComposer responseComposer;
     private readonly ApprovalService? approvalService;
+    private readonly DbQueryCorrectionPolicy dbQueryCorrectionPolicy;
 
     public AgentRuntime(
         IChatPlanner planner,
@@ -23,6 +24,7 @@ public sealed class AgentRuntime
         this.toolbeltClient = toolbeltClient;
         this.responseComposer = responseComposer ?? new HybridResponseComposer();
         this.approvalService = approvalService;
+        dbQueryCorrectionPolicy = new DbQueryCorrectionPolicy();
     }
 
     public async Task<IReadOnlyList<SseEnvelope>> RunAsync(
@@ -76,6 +78,16 @@ public sealed class AgentRuntime
                     sanitizedArgs = step.Args,
                     requiresApproval = false
                 });
+
+            if (step.ToolName == ToolNames.DbQueryReadonly)
+            {
+                if (!await TryRunDbQueryReadonlyWithCorrectionAsync(step, collectedResults))
+                {
+                    return emitted;
+                }
+
+                continue;
+            }
 
             ToolbeltToolResult result;
             try
@@ -195,6 +207,136 @@ public sealed class AgentRuntime
                     message = "Full citation chunk could not be loaded."
                 });
 
+        async Task<bool> TryRunDbQueryReadonlyWithCorrectionAsync(
+            ToolPlanStep initialStep,
+            CollectedToolResults results)
+        {
+            if (initialStep.Args is not StructuredQuery initialQuery)
+            {
+                await EmitSanitizedError(
+                    "DB_QUERY_SHAPE_INVALID",
+                    "db.query_readonly request shape is invalid.",
+                    ToolNames.DbQueryReadonly);
+                await EmitDone(success: false);
+                return false;
+            }
+
+            try
+            {
+                var result = await toolbeltClient.CallAsync(initialStep, cancellationToken);
+                results.Apply(result);
+                await Emit("tool.result", ToolResultSummarizer.Summarize(result));
+                return true;
+            }
+            catch (ToolbeltClientException exception) when (dbQueryCorrectionPolicy.IsRecoverable(exception))
+            {
+                await EmitDbQueryFailureResult(exception, attempt: 1);
+
+                if (!dbQueryCorrectionPolicy.TryCorrect(
+                        initialQuery,
+                        results.DbSchemaSummaryResult,
+                        out var correctedQuery))
+                {
+                    await EmitSanitizedError(
+                        "DB_QUERY_CORRECTION_FAILED",
+                        "db.query_readonly could not be corrected.",
+                        ToolNames.DbQueryReadonly,
+                        exception.StatusCode is null ? null : (int)exception.StatusCode.Value);
+                    await EmitDone(success: false);
+                    return false;
+                }
+
+                await Emit(
+                    "tool.retry",
+                    new
+                    {
+                        toolName = ToolNames.DbQueryReadonly,
+                        attempt = 2,
+                        maxAttempts = DbQueryCorrectionPolicy.MaxAttempts,
+                        reason = "schema_correction",
+                        message = "Retrying db.query_readonly with a schema-corrected StructuredQuery."
+                    });
+
+                var retryStep = initialStep with { Args = correctedQuery };
+                await Emit(
+                    "tool.call",
+                    new
+                    {
+                        toolName = retryStep.ToolName,
+                        sanitizedArgs = retryStep.Args,
+                        requiresApproval = false
+                    });
+
+                try
+                {
+                    var retryResult = await toolbeltClient.CallAsync(retryStep, cancellationToken);
+                    results.Apply(retryResult);
+                    await Emit("tool.result", ToolResultSummarizer.Summarize(retryResult));
+                    return true;
+                }
+                catch (ToolbeltClientException retryException)
+                {
+                    await EmitDbQueryFailureResult(retryException, attempt: 2);
+                    await EmitSanitizedError(
+                        "DB_QUERY_CORRECTION_FAILED",
+                        "db.query_readonly failed after schema correction.",
+                        ToolNames.DbQueryReadonly,
+                        retryException.StatusCode is null ? null : (int)retryException.StatusCode.Value);
+                    await EmitDone(success: false);
+                    return false;
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    await EmitSanitizedError(
+                        "DB_QUERY_CORRECTION_FAILED",
+                        "db.query_readonly failed after schema correction.",
+                        ToolNames.DbQueryReadonly);
+                    await EmitDone(success: false);
+                    return false;
+                }
+            }
+            catch (ToolbeltConfigurationException)
+            {
+                await EmitSanitizedError(
+                    "TOOLBELT_NOT_CONFIGURED",
+                    "Toolbelt base URL is not configured.",
+                    ToolNames.DbQueryReadonly);
+                await EmitDone(success: false);
+                return false;
+            }
+            catch (ToolbeltClientException exception)
+            {
+                await EmitSanitizedError(
+                    "TOOLBELT_CALL_FAILED",
+                    "Toolbelt call failed.",
+                    exception.ToolName,
+                    exception.StatusCode is null ? null : (int)exception.StatusCode.Value);
+                await EmitDone(success: false);
+                return false;
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                await EmitSanitizedError(
+                    "TOOLBELT_CALL_FAILED",
+                    "Toolbelt call failed.",
+                    ToolNames.DbQueryReadonly);
+                await EmitDone(success: false);
+                return false;
+            }
+        }
+
+        Task EmitDbQueryFailureResult(ToolbeltClientException exception, int attempt) =>
+            Emit(
+                "tool.result",
+                new
+                {
+                    toolName = ToolNames.DbQueryReadonly,
+                    success = false,
+                    attempt,
+                    code = SanitizedCode(exception.ErrorCode),
+                    message = SanitizedToolMessage(exception.ErrorMessage)
+                });
+
         async Task RunApprovalIntentAsync(string userId)
         {
             var argsPreview = approvalService.CreateGitHubIssueArgs();
@@ -262,6 +404,22 @@ public sealed class AgentRuntime
 
             await EmitDone(success: true);
         }
+    }
+
+    private static string SanitizedCode(string? code) =>
+        string.IsNullOrWhiteSpace(code) ? "TOOLBELT_CALL_FAILED" : code;
+
+    private static string SanitizedToolMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "Toolbelt call failed.";
+        }
+
+        var unsafePatterns = new[] { "stack", "exception", "connection string", "password", "secret" };
+        return unsafePatterns.Any(pattern => message.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            ? "Toolbelt call failed."
+            : message;
     }
 
     private static bool TryCreateDocsGetChunkStep(JsonElement docsSearchResult, out ToolPlanStep step)
