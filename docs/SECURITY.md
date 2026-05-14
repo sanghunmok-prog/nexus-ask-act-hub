@@ -6,6 +6,8 @@ For current merged-state implementation conventions, also read `docs/IMPLEMENTAT
 
 No state-changing action executes without approval.
 
+NEXUS is a governed demo workflow, not a broad autonomous agent. Read tools and write tools have different safety rules, and write actions require both approval and explicit execution.
+
 ## Secret handling
 
 - Never commit real secrets to the repository.
@@ -165,6 +167,13 @@ PR-07 enables SQL Server read execution only through `StructuredQuery` validatio
 
 Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL text, joins, writes, stored procedures, or non-compiler-generated commands for `db.query_readonly`.
 
+Final SQL read boundary:
+- callers never submit raw SQL
+- the Orchestrator produces StructuredQuery requests
+- Toolbelt validates against the allowlist
+- compiler output is parameterized
+- MVP reads remain single-table only
+
 ## PR-08 document ingestion safety
 
 - Only `.txt`, `.md`, and text-based `.pdf` uploads are supported.
@@ -262,6 +271,20 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - GitHub auth/config/validation failures return sanitized 4xx Toolbelt responses where applicable, such as `GITHUB_AUTH_FAILED` for a GitHub 401.
 - Tokens, secrets, raw GitHub responses, stack traces, connection strings, and internal exception details must not be committed, logged into public responses, or displayed in the UI.
 
+Final write-action boundary:
+- approval is not execution
+- execute is required after approval
+- duplicate execute is prevented by the checkpoint claim
+- write actions have no retry
+- GitHub execution is limited to allowed repositories
+- GitHub token configuration is isolated to Toolbelt
+
+## PR-17 final packaging safety
+
+- PR-17 adds portfolio/demo documentation and low-risk UI polish only.
+- It does not add product features, backend behavior changes, API behavior changes, schema changes, Azure IaC, deployment automation, dependencies, or secrets.
+- Azure deployment guidance is documented as readiness guidance only. The project does not claim to be deployed to Azure.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
@@ -286,6 +309,8 @@ The Toolbelt only executes tools and returns results.
 - Show durations
 - Show rowCount and citationCount
 - Never show chain-of-thought
+- Never show raw SQL, stack traces, connection strings, tokens, local passwords, or secrets in SSE/API responses
+- Public errors should be sanitized and stable enough for the UI to display safely
 
 ## Scope locks
 
@@ -296,3 +321,18 @@ Do not add before MVP:
 - raw SQL execution
 - 5+ connectors
 - ANN tuning
+
+## Final security summary
+
+- No raw SQL input.
+- StructuredQuery plus allowlist for SQL reads.
+- Parameterized SQL path.
+- Approval required before external writes.
+- Approve is not execute.
+- Execute required after approval.
+- Duplicate execute prevention.
+- No write-action retry.
+- GitHub token isolated to Toolbelt.
+- Sanitized errors.
+- No chain-of-thought exposure.
+- No secrets in SSE/API responses.

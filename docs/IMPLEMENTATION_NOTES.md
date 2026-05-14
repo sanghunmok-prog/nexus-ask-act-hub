@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file locks the current repository-level implementation conventions that reflect the merged implementation baseline through PR-04 and the query-safety design locked before PR-05 implementation.
+This file locks the current repository-level implementation conventions that reflect the merged implementation baseline through PR-17.
 
 Use this file together with the repo code as the canonical source of truth for current implementation behavior and repo conventions.
 
@@ -316,6 +316,7 @@ Still out of scope through PR-05:
   - `Failed`
 - Execution validates that the approval is `Approved`, the checkpoint is `ReadyToResume`, and the pending tool is exactly `github.create_issue`.
 - Duplicate execution is prevented by an atomic `ReadyToResume` -> `Executing` checkpoint claim.
+- Duplicate execute returns `409` and does not call Toolbelt.
 - The Orchestrator does not hold a SQL transaction open while calling Toolbelt or GitHub.
 - Successful execution marks the checkpoint `Completed`; failed execution marks it `Failed`.
 - GitHub write actions have no automatic retry. PR-15 read-path retry does not apply to write actions.
@@ -324,6 +325,42 @@ Still out of scope through PR-05:
 - GitHub token configuration belongs only to the Toolbelt environment through `NEXUS_GITHUB_TOKEN`.
 - `NEXUS_GITHUB_ALLOWED_REPOS` is required, and repo allowlist validation happens before any GitHub call.
 - GitHub errors returned to Orchestrator and UI must be sanitized and must not include tokens, raw GitHub response bodies, stack traces, connection strings, or secrets.
+
+## PR-17 final portfolio packaging convention
+
+- PR-17 is documentation and tiny UI polish only.
+- No new product features are added in PR-17.
+- No backend behavior, API behavior, database schema, dependencies, Azure IaC, or deployment automation are added in PR-17.
+- The final portfolio story is Ask + Act + Govern:
+  - Ask: SQL data plus policy document retrieval with citations.
+  - Recover: bounded read-path correction retry for recoverable `db.query_readonly` failures.
+  - Act + Govern: approval-gated GitHub issue creation after explicit approve and execute.
+- Final docs added in PR-17:
+  - `docs/ARCHITECTURE.md`
+  - `docs/FINAL_SMOKE_CHECKLIST.md`
+  - `docs/ENVIRONMENT.md`
+  - `docs/AZURE_DEPLOYMENT.md`
+- `docs/DEMO_SCRIPT.md` is the final recording/demo script.
+- `README.md` is the polished portfolio landing page.
+
+## Final completed state
+
+- Ask path completed.
+- Correction retry completed.
+- Approval UI completed.
+- GitHub issue execution completed.
+- Final portfolio/demo packaging completed.
+
+## Final PR-16 execution behavior
+
+- `POST /api/approvals/{approvalId}/execute` creates GitHub issues only after approval.
+- Approve records approval and marks the checkpoint `ReadyToResume`; approve does not execute.
+- Execute atomically claims `ReadyToResume` -> `Executing`.
+- Successful execution marks the checkpoint `Completed`.
+- Failed execution marks the checkpoint `Failed`.
+- Duplicate execute returns `409`.
+- No generic public resume endpoint exists.
+- No write retry exists.
 
 ## PR-07 Toolbelt readonly query convention
 
