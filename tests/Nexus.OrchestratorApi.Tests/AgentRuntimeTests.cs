@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nexus.Contracts;
 using Nexus.OrchestratorApi.Agent;
 using Nexus.OrchestratorApi.Approvals;
@@ -324,7 +325,11 @@ public sealed class AgentRuntimeTests
     private static ApprovalService CreateApprovalService(FakeApprovalRepository repository)
     {
         var configuration = new ConfigurationBuilder().Build();
-        return new ApprovalService(repository, new ApprovalIntentFactory(configuration, new TestHostEnvironment()));
+        return new ApprovalService(
+            repository,
+            new ApprovalIntentFactory(configuration, new TestHostEnvironment()),
+            new FakeToolbeltClient(),
+            NullLogger<ApprovalService>.Instance);
     }
 
     private static JsonElement Payload(SseEnvelope envelope) =>
@@ -333,7 +338,7 @@ public sealed class AgentRuntimeTests
     private static string PayloadString(SseEnvelope envelope) =>
         Payload(envelope).GetRawText();
 
-    private sealed class FakeToolbeltClient : IToolbeltClient
+    private sealed class FakeToolbeltClient : IToolbeltClient, IToolbeltWriteClient
     {
         private readonly int documentResultCount;
         private readonly bool failDocsGetChunk;
@@ -523,8 +528,14 @@ public sealed class AgentRuntimeTests
         public Task<IReadOnlyList<ApprovalRequestRecord>> GetPendingApprovalsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ApprovalRequestRecord>>([]);
 
+        public Task<IReadOnlyList<ReadyApprovalRecord>> GetReadyApprovalsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ReadyApprovalRecord>>([]);
+
         public Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default) =>
             Task.FromResult<ApprovalRequestRecord?>(null);
+
+        public Task<ReadyApprovalRecord?> GetApprovalWithCheckpointAsync(Guid approvalId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ReadyApprovalRecord?>(null);
 
         public Task<bool> ApproveAsync(
             Guid approvalId,
@@ -536,6 +547,15 @@ public sealed class AgentRuntimeTests
 
         public Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
+
+        public Task<bool> TryStartExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task CompleteExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task FailExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class TestHostEnvironment : IHostEnvironment

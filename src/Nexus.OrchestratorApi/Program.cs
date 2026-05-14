@@ -18,6 +18,10 @@ builder.Services.AddSingleton<ApprovalService>();
 builder.Services.AddSingleton<IApprovalRepository, SqlApprovalRepository>();
 builder.Services.AddSingleton<IChatPlanner>(services => ChatPlannerFactory.Create(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddHttpClient<IToolbeltClient, HttpToolbeltClient>();
+#pragma warning disable EXTEXP0001
+builder.Services.AddHttpClient<IToolbeltWriteClient, HttpToolbeltWriteClient>()
+    .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
 builder.Services.AddSingleton<HybridResponseComposer>();
 builder.Services.AddSingleton<AgentRuntime>();
 builder.Services.AddSingleton<SseEventWriter>();
@@ -90,6 +94,31 @@ app.MapGet("/api/approvals/pending", async (
     }
 });
 
+app.MapGet("/api/approvals/ready", async (
+    ApprovalService service,
+    ILoggerFactory loggerFactory,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await service.GetReadyApprovalsAsync(cancellationToken));
+    }
+    catch (Exception exception)
+    {
+        loggerFactory
+            .CreateLogger("Nexus.OrchestratorApi.Approvals.ReadyEndpoint")
+            .LogError(exception, "Ready approvals could not be loaded.");
+
+        return Results.Json(
+            new ApprovalErrorResponse
+            {
+                Code = "APPROVAL_PERSISTENCE_FAILED",
+                Message = "Ready approvals could not be loaded."
+            },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/api/approvals/{approvalId:guid}/approve", async (
     Guid approvalId,
     HttpContext context,
@@ -138,6 +167,33 @@ app.MapPost("/api/approvals/{approvalId:guid}/reject", async (
             {
                 Code = "APPROVAL_PERSISTENCE_FAILED",
                 Message = "Approval request could not be updated."
+            },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/api/approvals/{approvalId:guid}/execute", async (
+    Guid approvalId,
+    ApprovalService service,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await service.ExecuteAsync(approvalId, cancellationToken);
+        if (result.Response is not null)
+        {
+            return Results.Json(result.Response, statusCode: result.StatusCode);
+        }
+
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch
+    {
+        return Results.Json(
+            new ApprovalErrorResponse
+            {
+                Code = "APPROVAL_EXECUTION_FAILED",
+                Message = "Approved action could not be executed."
             },
             statusCode: StatusCodes.Status500InternalServerError);
     }

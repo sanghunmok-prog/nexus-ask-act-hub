@@ -1,6 +1,6 @@
 import { Component, Input, OnChanges, OnInit, SimpleChanges, inject, signal } from '@angular/core';
 import { DateLabelPipe } from '../date-label.pipe';
-import { ApprovalDecisionResponse, PendingApproval } from './approval.models';
+import { ApprovalDecisionResponse, ApprovalExecutionResponse, PendingApproval, ReadyApproval } from './approval.models';
 import { ApprovalService } from './approval.service';
 
 @Component({
@@ -13,7 +13,7 @@ import { ApprovalService } from './approval.service';
           <h2>Pending Approvals</h2>
           <p>No external action has been executed.</p>
         </div>
-        <button type="button" (click)="refresh()" [disabled]="loading() || decisionInFlight()">
+        <button type="button" (click)="refresh()" [disabled]="loading() || actionInFlight()">
           Refresh
         </button>
       </div>
@@ -77,7 +77,7 @@ import { ApprovalService } from './approval.service';
                   type="button"
                   class="primary"
                   (click)="approve(approval.approvalId)"
-                  [disabled]="decisionInFlight()"
+                  [disabled]="actionInFlight()"
                 >
                   Approve
                 </button>
@@ -85,9 +85,71 @@ import { ApprovalService } from './approval.service';
                   type="button"
                   class="secondary"
                   (click)="reject(approval.approvalId)"
-                  [disabled]="decisionInFlight()"
+                  [disabled]="actionInFlight()"
                 >
                   Reject
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+
+    <section class="approvals" aria-label="Ready approvals">
+      <div class="approvals__header">
+        <div>
+          <h2>Ready to Execute</h2>
+          <p>Approved action ready to execute.</p>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <p class="muted">Loading ready actions...</p>
+      } @else if (readyApprovals().length === 0) {
+        <p class="empty">No approved actions ready to execute.</p>
+      } @else {
+        <div class="approval-list">
+          @for (approval of readyApprovals(); track approval.approvalId) {
+            <article class="approval-card approval-card--ready">
+              <div class="approval-card__top">
+                <span class="badge badge--ready">{{ approval.checkpointStatus }}</span>
+                <time>{{ approval.approvedAtUtc | dateLabel }}</time>
+              </div>
+
+              <dl>
+                <div>
+                  <dt>Repo</dt>
+                  <dd>{{ approval.params.repo }}</dd>
+                </div>
+                <div>
+                  <dt>Title</dt>
+                  <dd>{{ approval.params.title }}</dd>
+                </div>
+                <div>
+                  <dt>Labels</dt>
+                  <dd>{{ labelText(approval.params.labels) }}</dd>
+                </div>
+                <div>
+                  <dt>Approved By</dt>
+                  <dd>{{ approval.approvedByUserId || 'demo-user' }}</dd>
+                </div>
+                <div>
+                  <dt>Approval ID</dt>
+                  <dd class="mono">{{ approval.approvalId }}</dd>
+                </div>
+              </dl>
+
+              <p class="execution-note">Approved action ready to execute.</p>
+
+              <div class="approval-card__actions">
+                <button
+                  type="button"
+                  class="primary"
+                  (click)="execute(approval.approvalId)"
+                  [disabled]="actionInFlight() || !approval.executionAvailable"
+                >
+                  Execute
                 </button>
               </div>
             </article>
@@ -104,8 +166,10 @@ export class ApprovalPanelComponent implements OnInit, OnChanges {
   private readonly approvalService = inject(ApprovalService);
 
   protected readonly approvals = signal<PendingApproval[]>([]);
+  protected readonly readyApprovals = signal<ReadyApproval[]>([]);
   protected readonly loading = signal(false);
   protected readonly decidingApprovalId = signal<string | null>(null);
+  protected readonly executingApprovalId = signal<string | null>(null);
   protected readonly successMessage = signal<string | null>(null);
   protected readonly errorMessage = signal<string | null>(null);
 
@@ -123,6 +187,10 @@ export class ApprovalPanelComponent implements OnInit, OnChanges {
     return this.decidingApprovalId() !== null;
   }
 
+  actionInFlight(): boolean {
+    return this.decidingApprovalId() !== null || this.executingApprovalId() !== null;
+  }
+
   refresh(): void {
     void this.loadApprovals();
   }
@@ -135,6 +203,10 @@ export class ApprovalPanelComponent implements OnInit, OnChanges {
     void this.recordDecision(approvalId, 'reject');
   }
 
+  execute(approvalId: string): void {
+    void this.executeApproval(approvalId);
+  }
+
   labelText(labels: string[] | null | undefined): string {
     return labels && labels.length > 0 ? labels.join(', ') : 'None';
   }
@@ -144,7 +216,12 @@ export class ApprovalPanelComponent implements OnInit, OnChanges {
     this.errorMessage.set(null);
 
     try {
-      this.approvals.set(await this.approvalService.getPending());
+      const [pending, ready] = await Promise.all([
+        this.approvalService.getPending(),
+        this.approvalService.getReady()
+      ]);
+      this.approvals.set(pending);
+      this.readyApprovals.set(ready);
     } catch (error) {
       this.errorMessage.set(this.safeErrorMessage(error, 'Pending approvals could not be loaded.'));
     } finally {
@@ -172,8 +249,31 @@ export class ApprovalPanelComponent implements OnInit, OnChanges {
     }
   }
 
+  private async executeApproval(approvalId: string): Promise<void> {
+    this.executingApprovalId.set(approvalId);
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+
+    try {
+      const response = await this.approvalService.execute(approvalId);
+      this.successMessage.set(this.executionMessage(response));
+      await this.loadApprovals();
+    } catch (error) {
+      this.errorMessage.set(this.safeErrorMessage(error, 'Approved action could not be executed.'));
+    } finally {
+      this.executingApprovalId.set(null);
+    }
+  }
+
   private decisionMessage(response: ApprovalDecisionResponse): string {
     return `${response.status}. Checkpoint status: ${response.checkpointStatus}. ${response.message}`;
+  }
+
+  private executionMessage(response: ApprovalExecutionResponse): string {
+    const issue = response.issueNumber && response.issueUrl
+      ? ` Issue #${response.issueNumber}: ${response.issueUrl}`
+      : '';
+    return `${response.message}${issue}`;
   }
 
   private safeErrorMessage(error: unknown, fallback: string): string {

@@ -9,6 +9,11 @@ public interface IToolbeltClient
     Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default);
 }
 
+public interface IToolbeltWriteClient
+{
+    Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default);
+}
+
 public sealed record ToolbeltToolResult(string ToolName, JsonElement RawJson);
 
 public sealed class ToolbeltClientException : Exception
@@ -167,4 +172,17 @@ public sealed class HttpToolbeltClient : IToolbeltClient
             : null;
 
     private sealed record ToolbeltError(string? Code, string? Message, IReadOnlyList<string> Errors);
+}
+
+public sealed class HttpToolbeltWriteClient : IToolbeltWriteClient
+{
+    private readonly HttpToolbeltClient inner;
+
+    public HttpToolbeltWriteClient(HttpClient httpClient, IConfiguration configuration, IHostEnvironment environment)
+    {
+        inner = new HttpToolbeltClient(httpClient, configuration, environment);
+    }
+
+    public Task<ToolbeltToolResult> CallAsync(ToolPlanStep step, CancellationToken cancellationToken = default) =>
+        inner.CallAsync(step, cancellationToken);
 }

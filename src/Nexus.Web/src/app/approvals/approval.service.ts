@@ -2,8 +2,11 @@ import { Injectable } from '@angular/core';
 import {
   ApprovalDecisionResponse,
   ApprovalErrorResponse,
+  ApprovalExecutionResponse,
   PendingApproval,
-  PendingApprovalsResponse
+  PendingApprovalsResponse,
+  ReadyApproval,
+  ReadyApprovalsResponse
 } from './approval.models';
 
 @Injectable({ providedIn: 'root' })
@@ -25,12 +28,46 @@ export class ApprovalService {
     return 'approvals' in body && Array.isArray(body.approvals) ? body.approvals : [];
   }
 
+  async getReady(signal?: AbortSignal): Promise<ReadyApproval[]> {
+    const response = await fetch('/api/approvals/ready', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      },
+      signal
+    });
+
+    const body = await this.readJson<ReadyApprovalsResponse | ApprovalErrorResponse>(response);
+    if (!response.ok) {
+      throw new Error(this.errorMessage(response.status, body));
+    }
+
+    return 'approvals' in body && Array.isArray(body.approvals) ? body.approvals : [];
+  }
+
   approve(approvalId: string, signal?: AbortSignal): Promise<ApprovalDecisionResponse> {
     return this.decide(approvalId, 'approve', signal);
   }
 
   reject(approvalId: string, signal?: AbortSignal): Promise<ApprovalDecisionResponse> {
     return this.decide(approvalId, 'reject', signal);
+  }
+
+  async execute(approvalId: string, signal?: AbortSignal): Promise<ApprovalExecutionResponse> {
+    const response = await fetch(`/api/approvals/${encodeURIComponent(approvalId)}/execute`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json'
+      },
+      signal
+    });
+
+    const body = await this.readJson<ApprovalExecutionResponse | ApprovalErrorResponse>(response);
+    if (!response.ok) {
+      throw new Error(this.errorMessage(response.status, body));
+    }
+
+    return body as ApprovalExecutionResponse;
   }
 
   private async decide(
@@ -64,7 +101,7 @@ export class ApprovalService {
 
   private errorMessage(status: number, body: unknown): string {
     const message = this.propertyValue(body, 'message');
-    const code = this.propertyValue(body, 'code');
+    const code = this.propertyValue(body, 'code') ?? this.propertyValue(body, 'errorCode');
 
     if (message && this.isSafeMessage(message)) {
       return code ? `${code}: ${message}` : message;

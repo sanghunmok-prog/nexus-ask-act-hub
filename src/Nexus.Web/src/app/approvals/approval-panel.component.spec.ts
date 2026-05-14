@@ -7,7 +7,7 @@ describe('ApprovalPanelComponent', () => {
   });
 
   it('renders pending approvals', async () => {
-    mockFetch([ok({ approvals: [approval()] })]);
+    mockFetch([ok({ approvals: [approval()] }), ok({ approvals: [] })]);
 
     const fixture = await createFixture();
 
@@ -21,14 +21,16 @@ describe('ApprovalPanelComponent', () => {
   it('approves and refreshes the pending list', async () => {
     const fetchMock = mockFetch([
       ok({ approvals: [approval()] }),
+      ok({ approvals: [] }),
       ok({
         approvalId: approval().approvalId,
         status: 'Approved',
         checkpointStatus: 'ReadyToResume',
-        resumeAvailable: false,
-        message: 'Approval recorded. The checkpoint is marked ready for future resume. No external action has been executed.'
+        resumeAvailable: true,
+        message: 'Approval recorded. The approved action is ready to execute. No external action has been executed yet.'
       }),
-      ok({ approvals: [] })
+      ok({ approvals: [] }),
+      ok({ approvals: [readyApproval()] })
     ]);
 
     const fixture = await createFixture();
@@ -37,14 +39,15 @@ describe('ApprovalPanelComponent', () => {
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(element.textContent).toContain('Approved. Checkpoint status: ReadyToResume.');
-    expect(element.textContent).toContain('No pending approvals.');
+    expect(element.textContent).toContain('Approved action ready to execute.');
   });
 
   it('rejects and refreshes the pending list', async () => {
     const fetchMock = mockFetch([
       ok({ approvals: [approval()] }),
+      ok({ approvals: [] }),
       ok({
         approvalId: approval().approvalId,
         status: 'Rejected',
@@ -52,6 +55,7 @@ describe('ApprovalPanelComponent', () => {
         resumeAvailable: false,
         message: 'Approval rejected. No external action was executed.'
       }),
+      ok({ approvals: [] }),
       ok({ approvals: [] })
     ]);
 
@@ -61,17 +65,18 @@ describe('ApprovalPanelComponent', () => {
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(element.textContent).toContain('Rejected. Checkpoint status: Failed.');
     expect(element.textContent).toContain('No pending approvals.');
   });
 
   it('shows empty state', async () => {
-    mockFetch([ok({ approvals: [] })]);
+    mockFetch([ok({ approvals: [] }), ok({ approvals: [] })]);
 
     const fixture = await createFixture();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('No pending approvals.');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No approved actions ready to execute.');
   });
 
   it('shows sanitized load errors', async () => {
@@ -85,13 +90,87 @@ describe('ApprovalPanelComponent', () => {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
         }
-      )
+      ),
+      ok({ approvals: [] })
     ]);
 
     const fixture = await createFixture();
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('APPROVAL_PERSISTENCE_FAILED: Approval requests could not be loaded.');
+    expect(text).not.toContain('stack');
+  });
+
+  it('renders ready approvals', async () => {
+    mockFetch([ok({ approvals: [] }), ok({ approvals: [readyApproval()] })]);
+
+    const fixture = await createFixture();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Ready to Execute');
+    expect(text).toContain('Approved action ready to execute.');
+    expect(text).toContain('Execute');
+    expect(text).toContain('ReadyToResume');
+  });
+
+  it('executes a ready approval and refreshes ready list', async () => {
+    const fetchMock = mockFetch([
+      ok({ approvals: [] }),
+      ok({ approvals: [readyApproval()] }),
+      ok({
+        approvalId: readyApproval().approvalId,
+        checkpointId: readyApproval().checkpointId,
+        toolName: 'github.create_issue',
+        status: 'Executed',
+        checkpointStatus: 'Completed',
+        issueNumber: 123,
+        issueUrl: 'https://github.com/owner/repo/issues/123',
+        message: 'GitHub issue created after explicit approval.'
+      }),
+      ok({ approvals: [] }),
+      ok({ approvals: [] })
+    ]);
+
+    const fixture = await createFixture();
+    clickButton(fixture.nativeElement, 'Execute');
+    await flushPromises();
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(text).toContain('GitHub issue created after explicit approval.');
+    expect(text).toContain('Issue #123');
+    expect(text).toContain('https://github.com/owner/repo/issues/123');
+    expect(text).toContain('No approved actions ready to execute.');
+  });
+
+  it('shows sanitized execute failures', async () => {
+    mockFetch([
+      ok({ approvals: [] }),
+      ok({ approvals: [readyApproval()] }),
+      new Response(
+        JSON.stringify({
+          status: 'Failed',
+          checkpointStatus: 'Failed',
+          errorCode: 'GITHUB_AUTH_FAILED',
+          message: 'GitHub issue execution failed. No sensitive details were exposed.'
+        }),
+        {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    ]);
+
+    const fixture = await createFixture();
+    clickButton(fixture.nativeElement, 'Execute');
+    await flushPromises();
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('GITHUB_AUTH_FAILED');
+    expect(text).toContain('GitHub issue execution failed. No sensitive details were exposed.');
+    expect(text).not.toContain('token');
     expect(text).not.toContain('stack');
   });
 });
@@ -145,6 +224,27 @@ function approval() {
       labels: ['nexus-demo']
     },
     riskSummary: 'Creates a GitHub issue. No action will run until approved.'
+  };
+}
+
+function readyApproval() {
+  return {
+    approvalId: '00000000-0000-0000-0000-000000000000',
+    correlationId: '11111111-1111-1111-1111-111111111111',
+    checkpointId: '22222222-2222-2222-2222-222222222222',
+    checkpointStatus: 'ReadyToResume',
+    approvedAtUtc: '2026-04-02T03:01:00Z',
+    approvedByUserId: 'approver-1',
+    toolName: 'github.create_issue',
+    paramsHash: 'sha256-hex',
+    params: {
+      repo: 'owner/repo',
+      title: 'Delayed shipments review',
+      body: 'Review delayed shipment findings from NEXUS.',
+      labels: ['nexus-demo']
+    },
+    riskSummary: 'Creates a GitHub issue. No action will run until approved.',
+    executionAvailable: true
   };
 }
 

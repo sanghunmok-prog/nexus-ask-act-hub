@@ -397,7 +397,7 @@ public sealed class AgentRuntime
                 "assistant.message",
                 new
                 {
-                    message = "Approval is required before creating the GitHub issue. No external action has been executed. Workflow resume and action execution will be added in a later PR.",
+                    message = "Approval is required before creating the GitHub issue. No external action has been executed. Approve the request, then explicitly execute the approved action.",
                     approvalId = result.Approval.ApprovalId,
                     resumeAvailable = false
                 });

@@ -69,6 +69,10 @@ button:disabled {
   padding: 0.85rem;
 }
 
+.approval-card--ready {
+  border-color: #bbf7d0;
+}
+
 .approval-card__top,
 .approval-card__actions {
   align-items: center;
@@ -90,6 +94,12 @@ button:disabled {
   font-size: 0.75rem;
   font-weight: 800;
   padding: 0.2rem 0.5rem;
+}
+
+.badge--ready {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+  color: #166534;
 }
 
 time {

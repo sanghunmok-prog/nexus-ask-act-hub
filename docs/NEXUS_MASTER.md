@@ -77,6 +77,8 @@ PR-13 implements the approval/checkpoint backend foundation. Approval UI, workfl
 
 PR-15 adds bounded deterministic read-path correction for recoverable `db.query_readonly` schema/allowlist failures. The retry budget is 1 correction retry, with at most 2 total `db.query_readonly` attempts.
 
+PR-16 adds approval-gated GitHub issue execution for `github.create_issue` only. Approval does not execute external actions; an explicit execute action is required.
+
 ## Pipeline C — Act
 1. User requests GitHub issue creation
 2. Orchestrator identifies approval-required action
@@ -84,12 +86,12 @@ PR-15 adds bounded deterministic read-path correction for recoverable `db.query_
 4. Insert AgentCheckpoint
 5. Emit approval.required
 6. Pause workflow
-7. After approve, load checkpoint and resume
-8. Execute github.create_issue
-9. Write AuditLog events
-10. Emit assistant.message and done
+7. Approve marks the checkpoint ReadyToResume without executing
+8. Explicit execute atomically claims ReadyToResume -> Executing
+9. Toolbelt executes github.create_issue
+10. Success marks Completed; failure marks Failed
 
-PR-13 implements steps 1-6 for backend approval/checkpoint state only. PR-14+ adds UI/resume work, and PR-16 adds GitHub execution.
+PR-16 implements GitHub issue execution with no automatic execution on approve, no write-action retry, and no generic public resume endpoint. The GitHub token belongs only to Toolbelt environment configuration, repo allowlist is required, and duplicate execution is prevented by the checkpoint claim.
 
 ## Pipeline D — Self-correction
 1. db.query_readonly fails
@@ -99,7 +101,7 @@ PR-13 implements steps 1-6 for backend approval/checkpoint state only. PR-14+ ad
 5. retry db.query_readonly once
 6. stop after at most 2 total db.query_readonly attempts
 
-PR-15 correction is read-path only. It does not expose chain-of-thought, raw SQL, stack traces, secrets, or connection strings. It does not apply to external actions, does not execute GitHub, and does not resume ReadyToResume checkpoints. GitHub issue execution remains PR-16.
+PR-15 correction is read-path only. It does not expose chain-of-thought, raw SQL, stack traces, secrets, or connection strings. It does not apply to external actions or GitHub writes.
 
 ## Repo layout
 - README.md
