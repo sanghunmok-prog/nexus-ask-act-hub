@@ -19,5 +19,17 @@ Repository documentation for NEXUS.
 - `DATA_MODEL.md`
   - SQL tables and schema notes
 
+- `ARCHITECTURE.md`
+  - Mermaid diagrams for component architecture, read path, correction retry, and approval-gated actions
+
 - `DEMO_SCRIPT.md`
-  - Interview / portfolio demo flow
+  - Portfolio demo flow for Ask, Recover, and Act + Govern
+
+- `FINAL_SMOKE_CHECKLIST.md`
+  - Final build, test, demo, and secret hygiene checks
+
+- `ENVIRONMENT.md`
+  - Local environment variables and process boundary guidance
+
+- `AZURE_DEPLOYMENT.md`
+  - Deployment readiness guide without infrastructure-as-code

@@ -79,6 +79,8 @@ PR-15 adds bounded deterministic read-path correction for recoverable `db.query_
 
 PR-16 adds approval-gated GitHub issue execution for `github.create_issue` only. Approval does not execute external actions; an explicit execute action is required.
 
+PR-17 completes portfolio/demo packaging. It polishes the README, adds final demo and smoke-check documentation, records environment and Azure deployment readiness guidance, and adds portfolio-friendly architecture diagrams. PR-17 does not add product features, backend behavior changes, API behavior changes, schema changes, Azure infrastructure, or deployment automation.
+
 ## Pipeline C — Act
 1. User requests GitHub issue creation
 2. Orchestrator identifies approval-required action
@@ -92,6 +94,14 @@ PR-16 adds approval-gated GitHub issue execution for `github.create_issue` only.
 10. Success marks Completed; failure marks Failed
 
 PR-16 implements GitHub issue execution with no automatic execution on approve, no write-action retry, and no generic public resume endpoint. The GitHub token belongs only to Toolbelt environment configuration, repo allowlist is required, and duplicate execution is prevented by the checkpoint claim.
+
+Final PR-16 behavior:
+- `POST /api/approvals/{approvalId}/execute` creates GitHub issues only after approval.
+- Approve marks a related checkpoint `ReadyToResume`; it does not execute the action.
+- Execute transitions `ReadyToResume` -> `Executing` -> `Completed` on success or `Failed` on error.
+- Duplicate execute returns `409` and does not call Toolbelt.
+- There is no generic public resume endpoint.
+- There is no write-action retry.
 
 ## Pipeline D — Self-correction
 1. db.query_readonly fails
@@ -148,7 +158,15 @@ PR-15 correction is read-path only. It does not expose chain-of-thought, raw SQL
 - PR-14: Approval UI + resume workflow from checkpoint
 - PR-15: Self-correction loop + retry budget tests
 - PR-16: GitHub create issue tool + approval gating
-- PR-17: Azure deploy (azd) + final README + demo script
+- PR-17: Portfolio demo polish and final packaging
+
+## Final completed state
+
+- Ask path completed: SQL read path, document retrieval path, hybrid answer composition, citations, and sanitized trace.
+- Correction retry completed: bounded read-path `db.query_readonly` correction with one retry and two total attempts.
+- Approval UI completed: pending approval list, approve/reject decisions, ready-to-execute list, and explicit execute action.
+- GitHub issue execution completed: approval-gated `github.create_issue` with Toolbelt-only token handling and repo allowlist.
+- Final portfolio/demo packaging completed: polished README, demo script, smoke checklist, environment guide, Azure deployment readiness guide, and architecture diagrams.
 
 ## Definition of done
 - Local run works in under 15 minutes on a clean machine

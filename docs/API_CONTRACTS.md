@@ -12,10 +12,17 @@ For current merged-state implementation conventions, also read `docs/IMPLEMENTAT
 - `POST /api/approvals/{approvalId}/approve`
 - `POST /api/approvals/{approvalId}/reject`
 - `POST /api/approvals/{approvalId}/execute`
-- `GET /api/audit/recent`
-- `GET /api/audit?correlationId=...`
 - `POST /api/documents/upload`
 - `POST /api/documents/{docId}/ingest`
+- `GET /api/health`
+
+## Toolbelt REST endpoints
+
+- `GET /api/tools/db/schema-summary`
+- `POST /api/tools/db/query-readonly`
+- `POST /api/tools/docs/search`
+- `POST /api/tools/docs/get-chunk`
+- `POST /api/tools/github/create-issue`
 - `GET /api/health`
 
 ## Document upload contract
