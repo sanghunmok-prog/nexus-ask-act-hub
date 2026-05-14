@@ -15,6 +15,8 @@ public static class CheckpointStatuses
 {
     public const string WaitingApproval = "WaitingApproval";
     public const string ReadyToResume = "ReadyToResume";
+    public const string Executing = "Executing";
+    public const string Completed = "Completed";
     public const string Failed = "Failed";
 }
 
@@ -24,7 +26,7 @@ public sealed record PendingGithubIssueArgs
 
     public required string Title { get; init; }
 
-    public required string Body { get; init; }
+    public string? Body { get; init; }
 
     public IReadOnlyList<string> Labels { get; init; } = [];
 }
@@ -123,6 +125,8 @@ public sealed record ApprovalPublicParams
 
     public required string Title { get; init; }
 
+    public string? Body { get; init; }
+
     public IReadOnlyList<string> Labels { get; init; } = [];
 }
 
@@ -140,6 +144,64 @@ public sealed record ApprovalDecisionResponse
     public required string CheckpointStatus { get; init; }
 
     public required bool ResumeAvailable { get; init; }
+
+    public required string Message { get; init; }
+}
+
+public sealed record ReadyApprovalRecord
+{
+    public required ApprovalRequestRecord Approval { get; init; }
+
+    public required AgentCheckpointRecord Checkpoint { get; init; }
+}
+
+public sealed record ReadyApprovalDto
+{
+    public required Guid ApprovalId { get; init; }
+
+    public required Guid CorrelationId { get; init; }
+
+    public required Guid CheckpointId { get; init; }
+
+    public required string CheckpointStatus { get; init; }
+
+    public DateTime? ApprovedAtUtc { get; init; }
+
+    public string? ApprovedByUserId { get; init; }
+
+    public required string ToolName { get; init; }
+
+    public required string ParamsHash { get; init; }
+
+    public required ApprovalPublicParams Params { get; init; }
+
+    public required string RiskSummary { get; init; }
+
+    public required bool ExecutionAvailable { get; init; }
+}
+
+public sealed record ReadyApprovalsResponse
+{
+    public IReadOnlyList<ReadyApprovalDto> Approvals { get; init; } = [];
+}
+
+public sealed record ApprovalExecutionResponse
+{
+    public required Guid ApprovalId { get; init; }
+
+    public required Guid CheckpointId { get; init; }
+
+    public required string ToolName { get; init; }
+
+    public required string Status { get; init; }
+
+    public required string CheckpointStatus { get; init; }
+
+    public int? IssueNumber { get; init; }
+
+    public string? IssueUrl { get; init; }
+
+    public string? ErrorCode { get; init; }
 
     public required string Message { get; init; }
 }

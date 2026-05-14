@@ -8,8 +8,10 @@ For current merged-state implementation conventions, also read `docs/IMPLEMENTAT
 
 - `POST /api/chat/stream`
 - `GET /api/approvals/pending`
+- `GET /api/approvals/ready`
 - `POST /api/approvals/{approvalId}/approve`
 - `POST /api/approvals/{approvalId}/reject`
+- `POST /api/approvals/{approvalId}/execute`
 - `GET /api/audit/recent`
 - `GET /api/audit?correlationId=...`
 - `POST /api/documents/upload`
@@ -134,7 +136,7 @@ Sanitized error codes:
 
 ## Approval contract
 
-PR-14 adds the approval UI and internal ReadyToResume checkpoint scaffold. Approve and reject endpoints only record decisions and update checkpoint status; they do not resume workflows, expose a public resume endpoint, execute GitHub, or execute any external action in PR-14. `resumeAvailable` remains `false`.
+PR-16 adds approval-gated GitHub issue execution. Approve still does not execute external actions; execution requires an explicit call to the execute endpoint. Only `github.create_issue` is supported. No generic resume endpoint is exposed.
 
 ### Pending approvals
 
@@ -156,6 +158,7 @@ Returns pending approvals ordered by `requestedAtUtc` descending.
       "params": {
         "repo": "sanghunmok-prog/nexus-ask-act-hub",
         "title": "Delayed shipments review",
+        "body": "Review delayed shipment findings from NEXUS. Approval is required before this issue is created.",
         "labels": ["nexus-demo"]
       },
       "riskSummary": "Creates a GitHub issue. No action will run until approved."
@@ -175,12 +178,12 @@ Uses `X-Nexus-UserId` when present; otherwise records `demo-user`.
   "approvalId": "00000000-0000-0000-0000-000000000000",
   "status": "Approved",
   "checkpointStatus": "ReadyToResume",
-  "resumeAvailable": false,
-  "message": "Approval recorded. The checkpoint is marked ready for future resume. No external action has been executed."
+  "resumeAvailable": true,
+  "message": "Approval recorded. The approved action is ready to execute. No external action has been executed yet."
 }
 ```
 
-Approval marks a related `WaitingApproval` checkpoint as `ReadyToResume` when present. `ReadyToResume` is internal future execution readiness only. It does not expose execution to the user and does not execute the pending action.
+Approval marks a related `WaitingApproval` checkpoint as `ReadyToResume` when present. `ReadyToResume` means the approved action can be explicitly executed later; approval itself does not call GitHub or any external action.
 
 ### Reject
 
@@ -200,6 +203,74 @@ Rejection records `Status = "Rejected"` and marks a related `WaitingApproval` ch
 
 Reject marks a related `WaitingApproval` checkpoint as `Failed` when present.
 
+### Ready approvals
+
+`GET /api/approvals/ready`
+
+Returns approved actions whose related checkpoint is `ReadyToResume`.
+
+```json
+{
+  "approvals": [
+    {
+      "approvalId": "00000000-0000-0000-0000-000000000000",
+      "correlationId": "11111111-1111-1111-1111-111111111111",
+      "checkpointId": "22222222-2222-2222-2222-222222222222",
+      "checkpointStatus": "ReadyToResume",
+      "approvedAtUtc": "2026-04-02T03:00:00Z",
+      "approvedByUserId": "demo-user",
+      "toolName": "github.create_issue",
+      "paramsHash": "sha256-hex",
+      "params": {
+        "repo": "sanghunmok-prog/nexus-ask-act-hub",
+        "title": "Delayed shipments review",
+        "body": "Review delayed shipment findings from NEXUS. Approval is required before this issue is created.",
+        "labels": ["nexus-demo"]
+      },
+      "riskSummary": "Creates a GitHub issue. No action will run until approved.",
+      "executionAvailable": true
+    }
+  ]
+}
+```
+
+### Execute approved action
+
+`POST /api/approvals/{approvalId}/execute`
+
+Executes only approved `github.create_issue` actions whose related checkpoint is `ReadyToResume`. The Orchestrator atomically claims the checkpoint with `ReadyToResume` -> `Executing`, calls Toolbelt outside the database transaction, then marks the checkpoint `Completed` on success or `Failed` on failure. Duplicate execution returns `409` and does not call Toolbelt.
+
+Success:
+
+```json
+{
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "checkpointId": "22222222-2222-2222-2222-222222222222",
+  "toolName": "github.create_issue",
+  "status": "Executed",
+  "checkpointStatus": "Completed",
+  "issueNumber": 123,
+  "issueUrl": "https://github.com/owner/repo/issues/123",
+  "message": "GitHub issue created after explicit approval."
+}
+```
+
+Failure:
+
+```json
+{
+  "approvalId": "00000000-0000-0000-0000-000000000000",
+  "checkpointId": "22222222-2222-2222-2222-222222222222",
+  "toolName": "github.create_issue",
+  "status": "Failed",
+  "checkpointStatus": "Failed",
+  "errorCode": "GITHUB_AUTH_FAILED",
+  "message": "GitHub issue execution failed. No sensitive details were exposed."
+}
+```
+
+When Toolbelt returns a sanitized GitHub failure code, execute includes that code as `errorCode`. It never includes tokens, raw GitHub response bodies, stack traces, or internal exception details.
+
 ### Approval errors
 
 ```json
@@ -213,6 +284,7 @@ Reject marks a related `WaitingApproval` checkpoint as `Failed` when present.
 Error codes:
 - `APPROVAL_NOT_FOUND`
 - `APPROVAL_NOT_PENDING`
+- `APPROVAL_NOT_EXECUTABLE`
 - `APPROVAL_PERSISTENCE_FAILED`
 
 ## Chat stream contract
@@ -248,15 +320,15 @@ PR-12 `assistant.message` contains the final deterministic hybrid answer for the
 
 For action prompts containing `create` plus `issue` or `ticket`, the runtime creates a pending `ApprovalRequest` and `AgentCheckpoint` for `github.create_issue`, emits `approval.required`, and stops. Initial checkpoint status is `WaitingApproval`.
 
-PR-14 approval decisions update the related checkpoint only:
+Approval decisions update the related checkpoint only:
 - approve: `WaitingApproval` -> `ReadyToResume`
 - reject: `WaitingApproval` -> `Failed`
 
-PR-14 does not call GitHub, execute Toolbelt action tools, resume workflow execution, or add a public resume endpoint. PR-16 will add GitHub create issue execution.
+PR-16 execution is a separate explicit API call. `POST /api/approvals/{approvalId}/execute` supports only `github.create_issue` and transitions `ReadyToResume` -> `Executing` -> `Completed` on success or `Failed` on error. There is no automatic execution on approve, no write-action retry, and no public generic resume endpoint.
 
 PR-15 adds bounded read-path correction for recoverable `db.query_readonly` schema/allowlist errors. The default retry budget is 1 correction retry, with at most 2 total `db.query_readonly` attempts. Correction is deterministic in mock mode and still sends a corrected `StructuredQuery` through the existing Toolbelt `db.query_readonly` path. It does not generate raw SQL and does not bypass QuerySafety.
 
-Correction does not apply to external actions. PR-15 does not execute GitHub, does not resume `ReadyToResume` checkpoints, and does not add any public resume endpoint. GitHub issue execution remains PR-16.
+Correction does not apply to external actions or GitHub writes.
 
 ### SSE event types
 
@@ -628,20 +700,39 @@ Not found output:
 
 github.create_issue
 
-Future PR-16 Toolbelt action contract. This is not executed or exposed as an approval-driven action in PR-14.
+PR-16 Toolbelt action contract. This endpoint is called only by Orchestrator after explicit approval and explicit execute. GitHub token configuration belongs only to the Toolbelt environment, and `NEXUS_GITHUB_ALLOWED_REPOS` is mandatory.
+
+`POST /api/tools/github/create-issue`
 
 Input:
 
+```json
 {
   "repo": "org/repo",
   "title": "Delayed Shipments: 30-day review",
   "body": "...",
   "labels": ["nexus-demo"]
 }
+```
 
 Output:
 
+```json
 {
-  "issueUrl": "https://github.com/.../issues/123",
-  "issueNumber": 123
+  "number": 123,
+  "htmlUrl": "https://github.com/org/repo/issues/123",
+  "title": "Delayed Shipments: 30-day review"
 }
+```
+
+Sanitized Toolbelt errors include:
+- `GITHUB_NOT_CONFIGURED`
+- `GITHUB_REPO_NOT_ALLOWED`
+- `GITHUB_REPO_INVALID`
+- `GITHUB_TITLE_REQUIRED`
+- `GITHUB_PERMISSION_FAILED`
+- `GITHUB_REPO_NOT_ACCESSIBLE`
+- `GITHUB_ISSUES_DISABLED`
+- `GITHUB_VALIDATION_FAILED`
+- `GITHUB_TEMPORARY_FAILURE`
+- `GITHUB_CREATE_ISSUE_FAILED`

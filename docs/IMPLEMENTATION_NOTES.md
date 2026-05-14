@@ -302,6 +302,29 @@ Still out of scope through PR-05:
 - PR-15 does not resume `ReadyToResume` checkpoints.
 - GitHub issue execution remains PR-16.
 
+## PR-16 approval-gated GitHub issue execution convention
+
+- PR-16 adds approval-gated execution for `github.create_issue` only.
+- Approve does not execute external actions. It records approval, marks the related checkpoint `ReadyToResume`, and reports that explicit execution is available.
+- Execute is a separate user action through `POST /api/approvals/{approvalId}/execute`.
+- `GET /api/approvals/ready` returns approved actions whose related checkpoint is `ReadyToResume`.
+- AgentCheckpoint status values are:
+  - `WaitingApproval`
+  - `ReadyToResume`
+  - `Executing`
+  - `Completed`
+  - `Failed`
+- Execution validates that the approval is `Approved`, the checkpoint is `ReadyToResume`, and the pending tool is exactly `github.create_issue`.
+- Duplicate execution is prevented by an atomic `ReadyToResume` -> `Executing` checkpoint claim.
+- The Orchestrator does not hold a SQL transaction open while calling Toolbelt or GitHub.
+- Successful execution marks the checkpoint `Completed`; failed execution marks it `Failed`.
+- GitHub write actions have no automatic retry. PR-15 read-path retry does not apply to write actions.
+- No generic public resume endpoint is added.
+- The Toolbelt endpoint is `POST /api/tools/github/create-issue`.
+- GitHub token configuration belongs only to the Toolbelt environment through `NEXUS_GITHUB_TOKEN`.
+- `NEXUS_GITHUB_ALLOWED_REPOS` is required, and repo allowlist validation happens before any GitHub call.
+- GitHub errors returned to Orchestrator and UI must be sanitized and must not include tokens, raw GitHub response bodies, stack traces, connection strings, or secrets.
+
 ## PR-07 Toolbelt readonly query convention
 
 - Query safety code now belongs to `src/Nexus.QuerySafety`.

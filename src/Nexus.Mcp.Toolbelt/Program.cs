@@ -9,9 +9,14 @@ builder.Services.AddSingleton<DbSchemaSummaryTool>();
 builder.Services.AddSingleton<DbQueryReadonlyTool>();
 builder.Services.AddSingleton<DocsSearchTool>();
 builder.Services.AddSingleton<DocsGetChunkTool>();
+builder.Services.AddSingleton<GitHubCreateIssueTool>();
 builder.Services.AddSingleton<IReadonlyQueryExecutor, SqlServerReadonlyQueryExecutor>();
 builder.Services.AddSingleton<IEmbeddingProvider, MockEmbeddingProvider>();
 builder.Services.AddSingleton<IDocumentRetrievalRepository, SqlServerDocumentRetrievalRepository>();
+#pragma warning disable EXTEXP0001
+builder.Services.AddHttpClient<IGitHubIssueClient, HttpGitHubIssueClient>()
+    .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
 
 var app = builder.Build();
 
@@ -90,6 +95,24 @@ app.MapPost("/api/tools/docs/get-chunk", async (
     catch (Exception)
     {
         var result = DocsGetChunkToolResult.LookupFailed();
+        return Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+});
+app.MapPost("/api/tools/github/create-issue", async (
+    GitHubCreateIssueRequest request,
+    GitHubCreateIssueTool tool,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await tool.CreateIssueAsync(request, cancellationToken);
+        return result.Succeeded
+            ? Results.Ok(result.Response)
+            : Results.Json(result.Error, statusCode: result.StatusCode);
+    }
+    catch
+    {
+        var result = GitHubCreateIssueToolResult.GitHubFailed(System.Net.HttpStatusCode.BadGateway);
         return Results.Json(result.Error, statusCode: result.StatusCode);
     }
 });

@@ -95,9 +95,11 @@ CREATE TABLE dbo.AgentCheckpoint (
 Status values:
 - `WaitingApproval`
 - `ReadyToResume`
+- `Executing`
+- `Completed`
 - `Failed`
 
-`ReadyToResume` is an internal future execution readiness state. In PR-14, approve marks a related `WaitingApproval` checkpoint `ReadyToResume`; reject marks a related `WaitingApproval` checkpoint `Failed`. PR-14 does not resume workflow execution, expose a public resume endpoint, execute GitHub, or execute any external action. `resumeAvailable` remains false. PR-16 will add GitHub create issue execution.
+`ReadyToResume` means an approved action is prepared for explicit execution. In PR-16, approve marks a related `WaitingApproval` checkpoint `ReadyToResume`, but does not execute external actions. The execute endpoint atomically claims eligible GitHub issue actions with `ReadyToResume` -> `Executing`; successful execution marks the checkpoint `Completed`, and failure marks it `Failed`. Reject marks a related `WaitingApproval` checkpoint `Failed`. The checkpoint status column remains `NVARCHAR(20)` and does not require a schema change.
 
 ## Notes
 - VECTOR(1536) is the initial embedding dimension choice from the reference doc.

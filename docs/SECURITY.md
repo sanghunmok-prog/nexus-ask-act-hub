@@ -248,6 +248,20 @@ Raw SQL input remains prohibited. Toolbelt must not accept caller-provided SQL t
 - PR-15 does not resume `ReadyToResume` checkpoints.
 - GitHub issue execution remains PR-16.
 
+## PR-16 GitHub issue execution safety
+
+- PR-16 adds approval-gated GitHub issue execution for `github.create_issue` only.
+- Approve does not execute external actions; an explicit execute action is required.
+- Only `Approved` approvals with a related `ReadyToResume` checkpoint can execute.
+- AgentCheckpoint status values are `WaitingApproval`, `ReadyToResume`, `Executing`, `Completed`, and `Failed`.
+- Duplicate issue creation is prevented by an atomic `ReadyToResume` -> `Executing` checkpoint claim.
+- GitHub write actions have no automatic retry in Orchestrator or Toolbelt HTTP clients. PR-15 read-path retry does not apply to write actions.
+- There is no generic public resume endpoint.
+- `NEXUS_GITHUB_TOKEN` belongs only in the Toolbelt environment.
+- `NEXUS_GITHUB_ALLOWED_REPOS` is mandatory; disallowed repos are rejected before any GitHub call.
+- GitHub auth/config/validation failures return sanitized 4xx Toolbelt responses where applicable, such as `GITHUB_AUTH_FAILED` for a GitHub 401.
+- Tokens, secrets, raw GitHub responses, stack traces, connection strings, and internal exception details must not be committed, logged into public responses, or displayed in the UI.
+
 ## Approval gating rules
 
 For any tool with `requiresApproval=true`:
@@ -256,7 +270,8 @@ For any tool with `requiresApproval=true`:
 2. create `AgentCheckpoint`
 3. emit `approval.required`
 4. stop workflow
-5. in PR-14, approve prepares the checkpoint as `ReadyToResume` for future support, but no public resume endpoint or execution path exists
+5. approve prepares the checkpoint as `ReadyToResume` but does not execute
+6. in PR-16, explicit execute can run only approved `github.create_issue` actions
 
 ## Ownership rule
 

@@ -12,7 +12,11 @@ public interface IApprovalRepository
 
     Task<IReadOnlyList<ApprovalRequestRecord>> GetPendingApprovalsAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ReadyApprovalRecord>> GetReadyApprovalsAsync(CancellationToken cancellationToken = default);
+
     Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default);
+
+    Task<ReadyApprovalRecord?> GetApprovalWithCheckpointAsync(Guid approvalId, CancellationToken cancellationToken = default);
 
     Task<bool> ApproveAsync(
         Guid approvalId,
@@ -22,6 +26,12 @@ public interface IApprovalRepository
         CancellationToken cancellationToken = default);
 
     Task<bool> RejectAsync(Guid approvalId, Guid correlationId, CancellationToken cancellationToken = default);
+
+    Task<bool> TryStartExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default);
+
+    Task CompleteExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default);
+
+    Task FailExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default);
 }
 
 public sealed class SqlApprovalRepository : IApprovalRepository
@@ -100,6 +110,26 @@ public sealed class SqlApprovalRepository : IApprovalRepository
         return approvals;
     }
 
+    public async Task<IReadOnlyList<ReadyApprovalRecord>> GetReadyApprovalsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 2;
+        command.CommandText = ReadyApprovalsSql;
+        command.Parameters.Add(new SqlParameter("@approvalStatus", ApprovalStatuses.Approved));
+        command.Parameters.Add(new SqlParameter("@checkpointStatus", CheckpointStatuses.ReadyToResume));
+        command.Parameters.Add(new SqlParameter("@toolName", ApprovalIntentFactory.GitHubCreateIssueToolName));
+
+        var approvals = new List<ReadyApprovalRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            approvals.Add(ReadReadyApproval(reader));
+        }
+
+        return approvals;
+    }
+
     public async Task<ApprovalRequestRecord?> GetApprovalAsync(Guid approvalId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
@@ -125,6 +155,18 @@ public sealed class SqlApprovalRepository : IApprovalRepository
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadApproval(reader) : null;
+    }
+
+    public async Task<ReadyApprovalRecord?> GetApprovalWithCheckpointAsync(Guid approvalId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 2;
+        command.CommandText = ReadyApprovalByIdSql;
+        command.Parameters.Add(new SqlParameter("@approvalId", approvalId));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadReadyApproval(reader) : null;
     }
 
     public async Task<bool> ApproveAsync(
@@ -244,6 +286,49 @@ public sealed class SqlApprovalRepository : IApprovalRepository
         }
     }
 
+    public async Task<bool> TryStartExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 2;
+        command.CommandText = """
+            UPDATE dbo.AgentCheckpoint
+            SET Status = @executingStatus
+            WHERE CheckpointId = @checkpointId
+              AND Status = @readyStatus;
+            """;
+        command.Parameters.Add(new SqlParameter("@executingStatus", CheckpointStatuses.Executing));
+        command.Parameters.Add(new SqlParameter("@checkpointId", checkpointId));
+        command.Parameters.Add(new SqlParameter("@readyStatus", CheckpointStatuses.ReadyToResume));
+
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    public Task CompleteExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default) =>
+        UpdateCheckpointStatusAsync(checkpointId, CheckpointStatuses.Completed, cancellationToken);
+
+    public Task FailExecutionAsync(Guid checkpointId, CancellationToken cancellationToken = default) =>
+        UpdateCheckpointStatusAsync(checkpointId, CheckpointStatuses.Failed, cancellationToken);
+
+    private async Task UpdateCheckpointStatusAsync(
+        Guid checkpointId,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 2;
+        command.CommandText = """
+            UPDATE dbo.AgentCheckpoint
+            SET Status = @status
+            WHERE CheckpointId = @checkpointId;
+            """;
+        command.Parameters.Add(new SqlParameter("@status", status));
+        command.Parameters.Add(new SqlParameter("@checkpointId", checkpointId));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private async Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -359,6 +444,90 @@ public sealed class SqlApprovalRepository : IApprovalRepository
             RiskSummary = reader.GetString(8),
             ApprovedAtUtc = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
             ApprovedByUserId = reader.IsDBNull(10) ? null : reader.GetString(10)
+        };
+
+    private const string ReadyApprovalsSql = """
+        SELECT TOP (50)
+            ar.ApprovalId AS ApprovalId,
+            ar.CorrelationId AS ApprovalCorrelationId,
+            ar.RequestedAtUtc AS RequestedAtUtc,
+            ar.RequestedByUserId AS RequestedByUserId,
+            ar.Status AS ApprovalStatus,
+            ar.ToolName AS ToolName,
+            ar.ParamsHash AS ParamsHash,
+            ar.ParamsJson AS ParamsJson,
+            ar.RiskSummary AS RiskSummary,
+            ar.ApprovedAtUtc AS ApprovedAtUtc,
+            ar.ApprovedByUserId AS ApprovedByUserId,
+            cp.CheckpointId AS CheckpointId,
+            cp.CorrelationId AS CheckpointCorrelationId,
+            cp.CreatedAtUtc AS CheckpointCreatedAtUtc,
+            cp.Status AS CheckpointStatus,
+            cp.ConversationSummary AS ConversationSummary,
+            cp.PendingActionJson AS PendingActionJson,
+            cp.LastToolCallId AS LastToolCallId
+        FROM dbo.ApprovalRequest AS ar
+        INNER JOIN dbo.AgentCheckpoint AS cp
+            ON cp.CorrelationId = ar.CorrelationId
+        WHERE ar.Status = @approvalStatus
+          AND cp.Status = @checkpointStatus
+          AND ar.ToolName = @toolName
+        ORDER BY ar.ApprovedAtUtc DESC, cp.CreatedAtUtc DESC;
+        """;
+
+    private const string ReadyApprovalByIdSql = """
+        SELECT TOP (1)
+            ar.ApprovalId AS ApprovalId,
+            ar.CorrelationId AS ApprovalCorrelationId,
+            ar.RequestedAtUtc AS RequestedAtUtc,
+            ar.RequestedByUserId AS RequestedByUserId,
+            ar.Status AS ApprovalStatus,
+            ar.ToolName AS ToolName,
+            ar.ParamsHash AS ParamsHash,
+            ar.ParamsJson AS ParamsJson,
+            ar.RiskSummary AS RiskSummary,
+            ar.ApprovedAtUtc AS ApprovedAtUtc,
+            ar.ApprovedByUserId AS ApprovedByUserId,
+            cp.CheckpointId AS CheckpointId,
+            cp.CorrelationId AS CheckpointCorrelationId,
+            cp.CreatedAtUtc AS CheckpointCreatedAtUtc,
+            cp.Status AS CheckpointStatus,
+            cp.ConversationSummary AS ConversationSummary,
+            cp.PendingActionJson AS PendingActionJson,
+            cp.LastToolCallId AS LastToolCallId
+        FROM dbo.ApprovalRequest AS ar
+        INNER JOIN dbo.AgentCheckpoint AS cp
+            ON cp.CorrelationId = ar.CorrelationId
+        WHERE ar.ApprovalId = @approvalId;
+        """;
+
+    private static ReadyApprovalRecord ReadReadyApproval(SqlDataReader reader) =>
+        new()
+        {
+            Approval = new ApprovalRequestRecord
+            {
+                ApprovalId = reader.GetGuid(0),
+                CorrelationId = reader.GetGuid(1),
+                RequestedAtUtc = reader.GetDateTime(2),
+                RequestedByUserId = reader.GetString(3),
+                Status = reader.GetString(4),
+                ToolName = reader.GetString(5),
+                ParamsHash = reader.GetString(6),
+                ParamsJson = reader.GetString(7),
+                RiskSummary = reader.GetString(8),
+                ApprovedAtUtc = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                ApprovedByUserId = reader.IsDBNull(10) ? null : reader.GetString(10)
+            },
+            Checkpoint = new AgentCheckpointRecord
+            {
+                CheckpointId = reader.GetGuid(11),
+                CorrelationId = reader.GetGuid(12),
+                CreatedAtUtc = reader.GetDateTime(13),
+                Status = reader.GetString(14),
+                ConversationSummary = reader.IsDBNull(15) ? string.Empty : reader.GetString(15),
+                PendingActionJson = reader.IsDBNull(16) ? null : reader.GetString(16),
+                LastToolCallId = reader.IsDBNull(17) ? null : reader.GetGuid(17)
+            }
         };
 }
 
