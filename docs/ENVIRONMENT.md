@@ -1,106 +1,145 @@
 # Environment
 
-This project uses explicit environment variables for local services and demo integrations. Keep real values in user-secrets, shell profile exports, local launch settings, or a gitignored `.env` file. Never commit local SQL passwords or GitHub tokens.
+NEXUS uses explicit environment variables for local services and demo integrations.
+
+Keep real values in user-secrets, shell exports, local launch settings, or a gitignored `.env` file. Never commit SQL passwords or GitHub tokens.
 
 ## Variables
 
-### `NEXUS_SQL_CONNECTION_STRING`
+| Variable | Process | Required | Purpose |
+|---|---|---:|---|
+| `NEXUS_SQL_CONNECTION_STRING` | Orchestrator, Toolbelt | yes | SQL Server persistence. |
+| `NEXUS_TOOLBELT_BASE_URL` | Orchestrator | yes | Toolbelt HTTP base URL. |
+| `LLM_MODE` | Orchestrator | recommended | Use `mock` for deterministic local demos. |
+| `NEXUS_DEMO_GITHUB_REPO` | Orchestrator | for GitHub demo | Demo repo used when preparing approval-gated issue requests. |
+| `NEXUS_GITHUB_TOKEN` | Toolbelt only | for GitHub execution | Fine-grained GitHub PAT with Issues read/write permission. |
+| `NEXUS_GITHUB_ALLOWED_REPOS` | Toolbelt only | for GitHub execution | Comma-separated repo allowlist. |
 
-Used by Orchestrator and Toolbelt code paths that read or write the local SQL Server database.
+## Recommended Local Values
 
-Example placeholder:
+### SQL Server
+
+Use the database name and credentials from your local SQL bootstrap setup.
 
 ```text
-Server=localhost,1433;Database=Nexus;User Id=sa;Password=<YOUR_LOCAL_SA_PASSWORD>;TrustServerCertificate=True;
+NEXUS_SQL_CONNECTION_STRING=Server=localhost,1433;Database=<YOUR_NEXUS_DATABASE>;User Id=sa;Password=<YOUR_LOCAL_SA_PASSWORD>;TrustServerCertificate=True;
 ```
 
-### `NEXUS_TOOLBELT_BASE_URL`
-
-Used by Orchestrator to call Toolbelt HTTP endpoints.
-
-Example:
+### Toolbelt Base URL
 
 ```text
-http://localhost:5002
+NEXUS_TOOLBELT_BASE_URL=http://localhost:5062
 ```
 
-Use the actual local Toolbelt URL from AppHost or your direct `dotnet run` output.
+Use the actual URL from AppHost or `dotnet run` if your local port differs.
 
-### `LLM_MODE`
-
-Controls planner behavior.
-
-Recommended local demo value:
+### Mock Mode
 
 ```text
-mock
+LLM_MODE=mock
 ```
 
-`LLM_MODE=mock` must remain supported for deterministic local development and portfolio demos.
+`mock` mode is recommended for recording and portfolio demos.
 
-### `NEXUS_DEMO_GITHUB_REPO`
-
-Configured demo repository for approval-gated GitHub issue creation.
-
-Example placeholder:
+### GitHub Demo Repo
 
 ```text
-<owner>/<repo>
+NEXUS_DEMO_GITHUB_REPO=<owner>/<repo>
 ```
 
-Use a test/demo repo, not a production repository.
+Use a test/demo repo.
 
-### `NEXUS_GITHUB_TOKEN`
-
-GitHub token used by Toolbelt when executing `github.create_issue`.
-
-Example placeholder:
+### GitHub Token
 
 ```text
-<YOUR_FINE_GRAINED_PAT_WITH_ISSUES_WRITE>
+NEXUS_GITHUB_TOKEN=<YOUR_FINE_GRAINED_PAT_WITH_ISSUES_WRITE>
 ```
 
 Rules:
 
-- This token belongs only to the Toolbelt process.
-- The Orchestrator should not receive this token.
-- Use a fine-grained GitHub PAT with selected repository access.
-- The token needs Issues read/write permission for the selected demo repository.
-- Never commit the token.
+- configure this only in Toolbelt
+- do not configure this in Orchestrator
+- do not expose this to Angular
+- use a fine-grained PAT scoped to the selected demo repo
+- grant Issues read/write permission only
 
-### `NEXUS_GITHUB_ALLOWED_REPOS`
-
-Comma-separated repository allowlist for Toolbelt GitHub issue creation.
-
-Example placeholder:
+### GitHub Repo Allowlist
 
 ```text
-<owner>/<repo>
+NEXUS_GITHUB_ALLOWED_REPOS=<owner>/<repo>
 ```
 
 Rules:
 
-- This variable is mandatory for GitHub execution.
-- It must include the configured `NEXUS_DEMO_GITHUB_REPO`.
-- Repositories not on the allowlist are rejected before any GitHub call.
+- required for GitHub execution
+- must include `NEXUS_DEMO_GITHUB_REPO`
+- disallowed repos are rejected before any GitHub call
 
-## Labels
+## Process Boundary
 
-If the demo uses labels, create the `nexus-demo` label in the configured demo repo before recording. GitHub may reject issue creation when a requested label does not exist.
+### Orchestrator
 
-## Recommended Process Boundary
+```bash
+export NEXUS_SQL_CONNECTION_STRING='Server=localhost,1433;Database=<YOUR_NEXUS_DATABASE>;User Id=sa;Password=<YOUR_LOCAL_SA_PASSWORD>;TrustServerCertificate=True;'
+export NEXUS_TOOLBELT_BASE_URL='http://localhost:5062'
+export LLM_MODE='mock'
+export NEXUS_DEMO_GITHUB_REPO='<owner>/<repo>'
+```
 
-Orchestrator:
+Start:
 
-- `NEXUS_SQL_CONNECTION_STRING`
-- `NEXUS_TOOLBELT_BASE_URL`
-- `LLM_MODE`
-- `NEXUS_DEMO_GITHUB_REPO`
+```bash
+dotnet run --project src/Nexus.OrchestratorApi --launch-profile http
+```
 
-Toolbelt:
+### Toolbelt
 
-- `NEXUS_SQL_CONNECTION_STRING`
-- `NEXUS_GITHUB_TOKEN`
-- `NEXUS_GITHUB_ALLOWED_REPOS`
+```bash
+export NEXUS_SQL_CONNECTION_STRING='Server=localhost,1433;Database=<YOUR_NEXUS_DATABASE>;User Id=sa;Password=<YOUR_LOCAL_SA_PASSWORD>;TrustServerCertificate=True;'
+export NEXUS_GITHUB_ALLOWED_REPOS='<owner>/<repo>'
+read -s -p 'NEXUS_GITHUB_TOKEN: ' NEXUS_GITHUB_TOKEN
+echo
+export NEXUS_GITHUB_TOKEN
+```
 
-Do not copy `NEXUS_GITHUB_TOKEN` into Orchestrator configuration.
+Start:
+
+```bash
+dotnet run --project src/Nexus.Mcp.Toolbelt --launch-profile http
+```
+
+### Angular
+
+```bash
+cd src/Nexus.Web
+npm start
+```
+
+The Angular app should use the dev proxy or configured API base URL. Do not put secrets in frontend configuration.
+
+## GitHub Label
+
+If the demo request uses `nexus-demo`, create the label in the configured GitHub repository before recording. GitHub can reject issue creation when a requested label does not exist.
+
+## Health Checks
+
+Use the actual local ports printed by AppHost or `dotnet run`.
+
+Common local demo ports:
+
+```bash
+curl -i http://localhost:5062/api/health
+curl -i http://localhost:5281/api/health
+```
+
+## Secret Hygiene
+
+Before publishing or recording:
+
+```bash
+grep -R "ghp_" .
+grep -R "github_pat_" .
+grep -R "NEXUS_GITHUB_TOKEN" .
+```
+
+Only placeholder references should appear in committed files.

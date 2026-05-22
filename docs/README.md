@@ -1,35 +1,27 @@
-# Docs
+# NEXUS Docs
 
-Repository documentation for NEXUS.
+This folder contains the final public documentation set for NEXUS.
 
-## Documents
+## Recommended Reading Order
 
-- `NEXUS_MASTER.md`
-  - Product scope, architecture, pipelines, PR order, and overall delivery target
+1. [`../README.md`](../README.md) — portfolio landing page, demo placeholder, architecture summary, and local quick start.
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — service boundaries and workflow diagrams.
+3. [`API_CONTRACTS.md`](API_CONTRACTS.md) — REST, SSE, StructuredQuery, approval, document, and Toolbelt contracts.
+4. [`DATA_MODEL.md`](DATA_MODEL.md) — SQL Server tables and persistence model.
+5. [`SECURITY.md`](SECURITY.md) — SQL safety, approval gating, trace hygiene, and secret boundaries.
+6. [`ENVIRONMENT.md`](ENVIRONMENT.md) — local environment variables and process isolation.
+7. [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) — ultra-compressed no-narration screen-recording plan.
+8. [`FINAL_SMOKE_CHECKLIST.md`](FINAL_SMOKE_CHECKLIST.md) — build, test, demo, and secret hygiene checks.
+9. [`AZURE_DEPLOYMENT.md`](AZURE_DEPLOYMENT.md) — cloud deployment readiness guide.
 
-- `IMPLEMENTATION_NOTES.md`
-  - Current merged-state implementation conventions and locked repo-level execution rules
+## Public Docs Policy
 
-- `API_CONTRACTS.md`
-  - REST, SSE, and query-shape contracts
+The final public docs should explain the completed project, not the historical PR-by-PR planning process.
 
-- `SECURITY.md`
-  - Allowlist, approvals, SQL safety, mock/live rules, and query safety rules
+Historical planning notes, old PR milestones, internal agent instructions, and personal recording materials can be kept under:
 
-- `DATA_MODEL.md`
-  - SQL tables and schema notes
+```text
+docs/archive/
+```
 
-- `ARCHITECTURE.md`
-  - Mermaid diagrams for component architecture, read path, correction retry, and approval-gated actions
-
-- `DEMO_SCRIPT.md`
-  - Portfolio demo flow for Ask, Recover, and Act + Govern
-
-- `FINAL_SMOKE_CHECKLIST.md`
-  - Final build, test, demo, and secret hygiene checks
-
-- `ENVIRONMENT.md`
-  - Local environment variables and process boundary guidance
-
-- `AZURE_DEPLOYMENT.md`
-  - Deployment readiness guide without infrastructure-as-code
+The archive folder is intentionally not part of the recommended reading path.

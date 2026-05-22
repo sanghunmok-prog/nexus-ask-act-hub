@@ -1,108 +1,106 @@
-# NEXUS Demo Script
+# Demo Script
 
-This script is designed for a portfolio walkthrough. It shows the complete NEXUS story: ask across data and documents, recover from a bounded read-path error, then execute a governed external action only after explicit approval.
+This is the final ultra-compressed demo plan for the README video or GIF.
 
-Before recording, use a test/demo GitHub repository and confirm `NEXUS_GITHUB_ALLOWED_REPOS` includes that repo.
+No narration. No terminal setup. No build steps. Show only screen recording plus short on-screen captions.
 
-## Demo 1: Ask
+Recommended runtime: **75–90 seconds**.
 
-Prompt:
+## Recording Setup
 
-```text
-Which delayed orders are most at risk, and what policy applies?
-```
+Open:
 
-Expected trace:
+- NEXUS Angular UI
+- GitHub demo repository Issues page
+- optional terminal or API client only for duplicate `409` proof
 
-- `workflow.started`
-- `tool.call` / `tool.result` for `docs.search`
-- `tool.call` / `tool.result` for `docs.get_chunk` when a citation is found
-- `tool.call` / `tool.result` for `db.get_schema_summary`
-- `tool.call` / `tool.result` for `db.query_readonly`
-- `assistant.message`
-- `done`
-
-Expected result:
-
-- Delayed orders table with order id, status, carrier, expected ship date, actual ship date, and delay reason.
-- Policy section that explains the applicable shipping delay guidance.
-- Citation section that references the policy document and chunk.
-
-Talk track:
-
-NEXUS is not just chatting over documents. It combines a governed SQL read path with document retrieval, then presents a trace so the operator can see which tools were used.
-
-## Demo 2: Recover
-
-Prompt:
+Use:
 
 ```text
-Which delayed orders need correction retry?
+LLM_MODE=mock
 ```
 
-Expected trace:
+Use a test/demo GitHub repository.
 
-- `workflow.started`
-- normal read-path setup events
-- first `db.query_readonly` attempt fails with a sanitized validation-style result
-- `tool.retry`
-- corrected `db.query_readonly` call
-- corrected query succeeds
-- `assistant.message`
-- `done`
+Do not show real tokens.
 
-What to point out:
+## Required Timeline
 
-- The retry budget is bounded: one correction retry, two total `db.query_readonly` attempts.
-- Correction applies only to recoverable read-path schema/allowlist failures.
-- The corrected request still goes through StructuredQuery and Toolbelt validation.
-- The trace is operational and sanitized. It does not expose chain-of-thought, raw SQL, stack traces, connection strings, or secrets.
+| Time | Screen | Action | Caption |
+|---:|---|---|---|
+| 0–3s | README or NEXUS UI | Show project title and core value. | `Ask · Recover · Govern` |
+| 3–15s | NEXUS UI | Enter: `Which delayed orders are most at risk, and what policy applies?` | `Ask with data` |
+| 15–28s | Answer + Trace | Show delayed orders, policy section, citations, `docs.search`, `db.get_schema_summary`, `db.query_readonly`. | `SQL + policy` |
+| 28–38s | NEXUS UI | Enter: `Which delayed orders need correction retry?` | `Recover safely` |
+| 38–52s | Trace | Show first read failure, `tool.retry`, corrected `db.query_readonly`, success. | `One retry only` |
+| 52–63s | NEXUS UI | Enter: `Create a GitHub issue for the delayed shipment findings.` | `Action requested` |
+| 63–72s | Trace + Approval Panel | Show `github.create_issue`, `requiresApproval=true`, `checkpoint.saved`, `approval.required`. | `Approval required` |
+| 72–80s | Pending Approvals | Click `Approve`; show item moves to Ready to Execute. | `Approve ≠ execute` |
+| 80–88s | Ready to Execute | Click `Execute`; show issue number and URL. | `Explicit execute` |
+| 88–95s | GitHub | Open created GitHub issue. | `Issue created` |
+| Optional | Terminal/API/UI | Execute same approval again; show `409 Conflict`. | `Duplicate blocked` |
 
-Talk track:
+## Required Outputs
 
-When a read query uses the wrong schema shape, the Orchestrator can recover once in a controlled way. It does not keep retrying, does not bypass the allowlist, and does not apply this retry behavior to write actions.
+Show these outputs clearly:
 
-## Demo 3: Act + Govern
+- assistant answer with delayed orders
+- policy section with citation
+- trace event: `docs.search`
+- trace event: `docs.get_chunk`
+- trace event: `db.get_schema_summary`
+- trace event: `db.query_readonly`
+- retry trace: first failure
+- retry trace: `tool.retry`
+- retry trace: corrected query success
+- action trace: `github.create_issue` with `requiresApproval=true`
+- `ApprovalRequest` pending card
+- `AgentCheckpoint` status or UI equivalent: `WaitingApproval`
+- approved item in Ready to Execute
+- GitHub issue number and URL
+- actual GitHub issue page
+- optional duplicate execute `409`
 
-Prompt:
+## Caption Guide
 
-```text
-Create a GitHub issue for the delayed shipment findings.
-```
+Use 3–5 words per caption.
 
-Expected trace:
+| Scene | Caption |
+|---|---|
+| Intro | `Ask · Recover · Govern` |
+| First prompt | `Ask with data` |
+| Read trace | `SQL + policy` |
+| Answer | `Cited answer` |
+| Retry prompt | `Recover safely` |
+| Retry event | `One retry only` |
+| Retry success | `Corrected query success` |
+| Action prompt | `External action requested` |
+| Approval gate | `Approval required` |
+| Pending card | `Human decision needed` |
+| Approve click | `Approve ≠ execute` |
+| Ready list | `Ready to execute` |
+| Execute click | `Explicit execute` |
+| GitHub result | `Issue created` |
+| Duplicate guard | `Duplicate blocked` |
 
-- `workflow.started`
-- `tool.call` for `github.create_issue` with `requiresApproval=true`
-- `checkpoint.saved`
-- `approval.required`
-- `assistant.message`
-- `done`
+## What Not To Show
 
-Expected UI flow:
+Do not show:
 
-1. Pending approval appears in the approval panel.
-2. Show the repo, issue title, labels, risk summary, requested user, and approval id.
-3. Click approve.
-4. Point out that approve does not create the issue.
-5. The approved action moves to Ready to Execute.
-6. Click execute.
-7. The UI shows the GitHub issue URL returned from Toolbelt.
-8. Triggering execute again for the same approval should be blocked with `409`.
+- package restore
+- build output
+- test output
+- environment variable setup
+- real GitHub token
+- local SQL password
+- long terminal logs
+- source code scrolling
+- narration subtitles longer than one short phrase
 
-What to point out:
+## Success Criteria
 
-- GitHub execution creates a real issue in the configured demo repo.
-- Use a test/demo repo.
-- Close demo issues after recording if desired.
-- The GitHub token belongs only to Toolbelt.
-- Orchestrator persists the approval and checkpoint state, then calls Toolbelt only after explicit execute.
-- Duplicate execute is blocked by the checkpoint transition from `ReadyToResume` to `Executing`.
+The viewer should understand three things in under 90 seconds:
 
-Talk track:
-
-This is the main governance story. NEXUS can prepare an external action, but it cannot write to GitHub until a user approves the request and then explicitly executes the approved action.
-
-## Closing Line
-
-NEXUS demonstrates a practical Ask + Act + Govern workflow: answer with data and citations, recover safely from bounded read-path mistakes, and require explicit human control for external writes.
+1. NEXUS answers with SQL data and policy citations.
+2. NEXUS can recover once from a safe read-path schema mistake.
+3. NEXUS cannot write to GitHub until approval and explicit execute.

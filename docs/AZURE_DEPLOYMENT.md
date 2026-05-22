@@ -1,133 +1,130 @@
-# Azure Deployment Readiness Guide
+# Azure Deployment Readiness
 
-This is a deployment readiness guide for future work. The repository does not include Azure infrastructure-as-code and does not claim an Azure deployment is already complete.
+This guide describes how NEXUS could be deployed to Azure.
 
-## High-Level Options
+It is a readiness guide, not a claim that this repository already includes Azure infrastructure-as-code or a completed Azure deployment.
 
-NEXUS can be deployed as separate services:
+## Target Shape
 
-- Orchestrator API as an API service.
-- Toolbelt API as a separate internal API service.
-- Angular app as a static frontend.
-- SQL Server or Azure SQL as the persistence layer.
+```text
+Angular static frontend
+  -> Orchestrator API
+      -> Azure SQL / SQL Server
+      -> Toolbelt API
+          -> Azure SQL / SQL Server
+          -> GitHub Issues API
+```
 
-The service split is intentional. It keeps approval policy and workflow orchestration separate from tool execution and external credentials.
+## Components
 
-## Orchestrator API
+| Component | Azure-ready option | Notes |
+|---|---|---|
+| Angular frontend | Azure Static Web Apps or static website hosting | Configure API base URL and CORS intentionally. |
+| Orchestrator API | Azure App Service, Azure Container Apps, or equivalent | Public/protected API for frontend calls. |
+| Toolbelt API | Internal App Service, Container App, or private service | Prefer restricted exposure. Owns GitHub token. |
+| SQL persistence | Azure SQL or SQL Server | Validate vector type support for document retrieval. |
+| Secrets | Managed secret store | Do not store tokens in frontend config or committed files. |
 
-The Orchestrator should be deployed as a public or protected API service that the Angular frontend can call.
-
-Responsibilities:
+## Orchestrator Responsibilities
 
 - `POST /api/chat/stream`
-- approval pending, ready, approve, reject, and execute endpoints
+- approval pending/ready/approve/reject/execute endpoints
 - document upload and ingestion endpoints
 - audit/checkpoint persistence
 - calls to Toolbelt through `NEXUS_TOOLBELT_BASE_URL`
 
 The Orchestrator should not receive `NEXUS_GITHUB_TOKEN`.
 
-## Toolbelt API
-
-The Toolbelt should be deployed as a separate API service, ideally with restricted network exposure.
-
-Responsibilities:
+## Toolbelt Responsibilities
 
 - SQL read tool endpoints
 - document search and chunk lookup endpoints
 - `POST /api/tools/github/create-issue`
+- GitHub repo allowlist enforcement
+- GitHub token usage
 
-The Toolbelt owns the GitHub token and repository allowlist.
+The Toolbelt owns `NEXUS_GITHUB_TOKEN`.
 
-## Angular Static Frontend
+## Environment Mapping
 
-The Angular app can be built with:
+### Orchestrator
 
-```bash
-cd src/Nexus.Web
-npm run build
+```text
+NEXUS_SQL_CONNECTION_STRING
+NEXUS_TOOLBELT_BASE_URL
+LLM_MODE
+NEXUS_DEMO_GITHUB_REPO
 ```
 
-Deployment options include Azure Static Web Apps, Azure Storage static website hosting, or another static hosting service. Configure API base URLs and CORS according to the chosen hosting model.
+### Toolbelt
 
-## SQL Server / Azure SQL Considerations
+```text
+NEXUS_SQL_CONNECTION_STRING
+NEXUS_GITHUB_TOKEN
+NEXUS_GITHUB_ALLOWED_REPOS
+```
 
-For an Azure-hosted demo, Azure SQL is the natural target for the SQL persistence layer.
+### Frontend
 
-Consider:
+```text
+API base URL or hosting-specific proxy configuration
+```
 
-- applying schema and seed scripts in a controlled migration step
-- using least-privilege database users
-- enabling TLS and appropriate firewall rules
-- validating SQL Server vector type support for document retrieval
-- separating demo data from any real customer or production data
+Do not expose secrets through frontend build-time variables.
 
-## Environment Variable Mapping
+## Database Migration
 
-Orchestrator:
+Use a controlled migration step for schema changes.
 
-- `NEXUS_SQL_CONNECTION_STRING`
-- `NEXUS_TOOLBELT_BASE_URL`
-- `LLM_MODE`
-- `NEXUS_DEMO_GITHUB_REPO`
+Recommended pattern:
 
-Toolbelt:
+```bash
+dotnet ef database update \
+  --project <migration-project> \
+  --startup-project src/Nexus.OrchestratorApi
+```
 
-- `NEXUS_SQL_CONNECTION_STRING`
-- `NEXUS_GITHUB_TOKEN`
-- `NEXUS_GITHUB_ALLOWED_REPOS`
+For demo seed data, apply seed scripts only to non-production/demo databases.
 
-Frontend:
+## Security Considerations
 
-- API base URL or proxy configuration appropriate for the hosting option
+- Use least-privilege SQL credentials.
+- Store secrets in a managed secret store.
+- Use a fine-grained GitHub PAT scoped to the selected demo repo.
+- Do not configure `NEXUS_GITHUB_TOKEN` in Orchestrator.
+- Lock down Toolbelt network exposure.
+- Add service-to-service authentication before production use.
+- Configure explicit CORS origins.
+- Add structured logging with secret redaction.
+- Add rate limits and request size limits.
 
-## Secret Handling
+## CORS
 
-Recommended practices:
+If Angular and Orchestrator are served from different origins:
 
-- Store SQL passwords and GitHub tokens in a managed secret store.
-- Do not place secrets in frontend configuration.
-- Do not place `NEXUS_GITHUB_TOKEN` in Orchestrator configuration.
-- Rotate the GitHub PAT after demos if it was exposed to local machines or shared environments.
-- Prefer a fine-grained PAT scoped to the selected demo repo with Issues read/write permission only.
+- allow only the deployed frontend origin
+- do not use wildcard CORS in production
+- keep Toolbelt inaccessible from the browser
 
-## Service-To-Service URL Requirements
-
-The Orchestrator must be able to reach Toolbelt at `NEXUS_TOOLBELT_BASE_URL`.
-
-For cloud deployment, decide whether Toolbelt is:
-
-- private/internal and reachable only by Orchestrator
-- public but protected by network and identity controls
-
-The portfolio demo code currently uses simple HTTP service calls. Production hardening should add service authentication.
-
-## CORS Considerations
-
-If Angular and Orchestrator are served from different origins, configure Orchestrator CORS intentionally.
-
-Do not enable broad wildcard CORS for a real deployment. Allow only the deployed frontend origin.
-
-## Known Limitations
+## Known Gaps
 
 - No Azure IaC is included.
 - No CI/CD deployment workflow is included.
-- No production auth/RBAC is implemented.
-- Service-to-service authentication is not implemented.
-- The frontend demo assumes the existing API contracts and dev proxy pattern unless deployment-specific configuration is added later.
-- This guide is readiness documentation, not a deployment record.
+- No production SSO or RBAC is implemented.
+- No service-to-service authentication is implemented.
+- No production monitoring/alerting is included.
+- This is not a production deployment record.
 
 ## Production Hardening Checklist
 
-- [ ] Add real identity and RBAC.
+- [ ] Add identity and RBAC.
 - [ ] Add service-to-service authentication between Orchestrator and Toolbelt.
 - [ ] Store secrets in a managed secret store.
 - [ ] Use least-privilege SQL credentials.
-- [ ] Lock down Toolbelt network exposure.
+- [ ] Restrict Toolbelt network exposure.
 - [ ] Configure explicit CORS origins.
+- [ ] Add deployment IaC.
+- [ ] Add CI/CD deployment workflow.
+- [ ] Add backup and restore plan.
+- [ ] Add monitoring for failed approval executions.
 - [ ] Add structured operational logging with secret redaction.
-- [ ] Add deployment IaC in a separate PR/project.
-- [ ] Add CI/CD deployment workflow in a separate PR/project.
-- [ ] Add backup and restore plan for SQL.
-- [ ] Add rate limits and request size limits appropriate for deployment.
-- [ ] Add monitoring and alerting for failed approval executions.
