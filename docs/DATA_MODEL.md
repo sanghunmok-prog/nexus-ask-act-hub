@@ -1,10 +1,36 @@
 # Data Model
 
-This file turns the master doc schema into a direct implementation reference for PR-02.
+NEXUS stores business data, policy retrieval data, and governance state in SQL Server.
 
-## Business tables
+## Table Overview
 
-### Orders
+| Table | Purpose |
+|---|---|
+| `Orders` | Demo business data for delayed shipment questions. |
+| `PolicyDocuments` | Uploaded policy document metadata. |
+| `PolicyChunks` | Chunked document text and embeddings for retrieval. |
+| `ApprovalRequest` | Human approval record for external actions. |
+| `AgentCheckpoint` | Paused or executable workflow state. |
+| `AuditLog` | Governance event log reserved for audit review. |
+
+## Migration Strategy
+
+The schema is compatible with an EF Core migration workflow. Use EF Core migrations for application-owned schema evolution and keep deterministic local demo seed scripts under `infra/docker/sql/`.
+
+Recommended migration command shape:
+
+```bash
+dotnet ef database update \
+  --project src/Nexus.OrchestratorApi \
+  --startup-project src/Nexus.OrchestratorApi
+```
+
+If migrations live in a dedicated infrastructure project in your branch, use that project for `--project`.
+
+## Business Tables
+
+### `Orders`
+
 ```sql
 CREATE TABLE dbo.Orders (
   OrderId INT IDENTITY(1,1) PRIMARY KEY,
@@ -17,7 +43,16 @@ CREATE TABLE dbo.Orders (
 );
 ```
 
-### PolicyDocuments
+Purpose:
+
+- stores operational order data
+- supports delayed shipment demo queries
+- read through `StructuredQuery` only
+
+## Policy Retrieval Tables
+
+### `PolicyDocuments`
+
 ```sql
 CREATE TABLE dbo.PolicyDocuments (
   DocId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
@@ -27,7 +62,8 @@ CREATE TABLE dbo.PolicyDocuments (
 );
 ```
 
-### PolicyChunks
+### `PolicyChunks`
+
 ```sql
 CREATE TABLE dbo.PolicyChunks (
   ChunkId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
@@ -41,21 +77,18 @@ CREATE TABLE dbo.PolicyChunks (
 );
 ```
 
-## Governance tables
+Notes:
 
-### AuditLog
-```sql
-CREATE TABLE dbo.AuditLog (
-  AuditId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-  CorrelationId UNIQUEIDENTIFIER NOT NULL,
-  OccurredAtUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-  ActorUserId NVARCHAR(100) NOT NULL,
-  EventType NVARCHAR(60) NOT NULL,
-  PayloadJson NVARCHAR(MAX) NOT NULL
-);
-```
+- upload creates `PolicyDocuments` and `PolicyChunks`
+- chunks are initially stored with `Embedding = NULL`
+- ingest populates deterministic mock embeddings
+- `docs.search` searches chunks where embeddings exist
+- `docs.get_chunk` loads full text by `chunkId` or citation id
 
-### ApprovalRequest
+## Governance Tables
+
+### `ApprovalRequest`
+
 ```sql
 CREATE TABLE dbo.ApprovalRequest (
   ApprovalId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
@@ -73,13 +106,17 @@ CREATE TABLE dbo.ApprovalRequest (
 ```
 
 Status values:
-- `Pending`
-- `Approved`
-- `Rejected`
 
-Rejection is stored as status only. Detailed rejection actor/time metadata can be added later through audit or schema changes.
+| Status | Meaning |
+|---|---|
+| `Pending` | Waiting for a human decision. |
+| `Approved` | Human approval recorded. |
+| `Rejected` | Human rejection recorded. |
 
-### AgentCheckpoint
+`ParamsHash` binds the approval decision to deterministic action parameters.
+
+### `AgentCheckpoint`
+
 ```sql
 CREATE TABLE dbo.AgentCheckpoint (
   CheckpointId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
@@ -93,21 +130,52 @@ CREATE TABLE dbo.AgentCheckpoint (
 ```
 
 Status values:
-- `WaitingApproval`
-- `ReadyToResume`
-- `Executing`
-- `Completed`
-- `Failed`
 
-`ReadyToResume` means an approved action is prepared for explicit execution. In PR-16, approve marks a related `WaitingApproval` checkpoint `ReadyToResume`, but does not execute external actions. The execute endpoint atomically claims eligible GitHub issue actions with `ReadyToResume` -> `Executing`; successful execution marks the checkpoint `Completed`, and failure marks it `Failed`. Reject marks a related `WaitingApproval` checkpoint `Failed`. The checkpoint status column remains `NVARCHAR(20)` and does not require a schema change.
+| Status | Meaning |
+|---|---|
+| `WaitingApproval` | Workflow is paused until approval or rejection. |
+| `ReadyToResume` | Approval was recorded; action is ready for explicit execute. |
+| `Executing` | Orchestrator atomically claimed the checkpoint and is running the action. |
+| `Completed` | External action completed successfully. |
+| `Failed` | Rejected or failed execution. |
 
-## Notes
-- VECTOR(1536) is the initial embedding dimension choice from the reference doc.
-- `PolicyChunks.Embedding` is nullable during staged document ingestion.
-- PR-08 upload/chunking stores extracted chunks with `Embedding = NULL`.
-- PR-09 populates `PolicyChunks.Embedding` with deterministic mock embeddings.
-- `PolicyChunks.Embedding` remains `VECTOR(1536)`.
-- PR-10 `docs.search` searches only chunks where `Embedding IS NOT NULL`.
-- PR-10 `docs.search` uses exact `VECTOR_DISTANCE` over `PolicyChunks.Embedding`.
-- PR-10 `docs.get_chunk` retrieves chunk text by `ChunkId` or citation id (`DocId:ChunkIndex`) and does not require an embedding.
-- PR-02 may implement this via SQL scripts first and EF migrations only if useful.
+Important boundary:
+
+```text
+Approve != Execute
+```
+
+Approve records the human decision and prepares the checkpoint. Execute performs the external action.
+
+### `AuditLog`
+
+```sql
+CREATE TABLE dbo.AuditLog (
+  AuditId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+  CorrelationId UNIQUEIDENTIFIER NOT NULL,
+  OccurredAtUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  ActorUserId NVARCHAR(100) NOT NULL,
+  EventType NVARCHAR(60) NOT NULL,
+  PayloadJson NVARCHAR(MAX) NOT NULL
+);
+```
+
+`AuditLog` is reserved for governance/audit review workflows.
+
+## Relationship Notes
+
+- `PolicyDocuments` has many `PolicyChunks`.
+- `ApprovalRequest` and `AgentCheckpoint` are linked by `CorrelationId`.
+- `ApprovalRequest` stores the human decision.
+- `AgentCheckpoint` stores executable workflow state.
+- Duplicate execute is prevented by atomically claiming `ReadyToResume -> Executing`.
+
+## Seed Data
+
+Local demo seed scripts should create delayed order examples and policy documents suitable for the default demo prompts:
+
+```text
+Which delayed orders are most at risk, and what policy applies?
+Which delayed orders need correction retry?
+Create a GitHub issue for the delayed shipment findings.
+```
