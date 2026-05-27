@@ -1,8 +1,14 @@
-# NEXUS — Ask + Recover + Govern
+# NEXUS — Ask + Recover + Govern + Act
 
 NEXUS is a .NET full-stack portfolio project that demonstrates how an AI-assisted internal operations tool can answer business questions from SQL data and policy documents, recover from bounded read-path mistakes, and execute external actions only after explicit human approval.
 
 The project is intentionally not a broad autonomous agent. It is a governed workflow system with clear service boundaries, safe database access, sanitized trace events, persisted approvals, checkpoints, and approval-gated GitHub issue creation.
+
+## Demo Video
+
+[Watch the NEXUS portfolio demo](https://github.com/sanghunmok-prog/nexus-ask-act-hub/releases/tag/v1.0-demo)
+
+This demo shows SQL + policy document answering, transparent trace events, safe one-time correction retry, approval-gated GitHub issue execution, and duplicate execution blocking.
 
 ## Key Features
 
@@ -14,16 +20,15 @@ The project is intentionally not a broad autonomous agent. It is a governed work
 - **Sanitized Trace Timeline** — UI traces show tool names, sanitized arguments, durations, row counts, citation counts, and approval status without exposing secrets or chain-of-thought.
 - **Deterministic Local Demo** — `LLM_MODE=mock` keeps demos and tests stable without requiring live model credentials.
 
-![Demo](link)
 
 ## Demo Flow
 
-The recommended README demo GIF/video flow is:
+The recommended README demo video flow is:
 
 1. **Ask** — `Which delayed orders are most at risk, and what policy applies?`
 2. **Recover** — `Which delayed orders need correction retry?`
 3. **Govern** — `Create a GitHub issue for the delayed shipment findings.`
-4. **Execute** — approve the pending action, explicitly execute it, then confirm the GitHub issue URL.
+4. **Execute** — approve the pending action, show that approval is not execution, explicitly execute it, then confirm the GitHub issue URL.
 5. **Guard** — retry the same execute request and show `409 Conflict`.
 
 See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for the ultra-compressed no-narration screen-recording plan.
@@ -180,7 +185,7 @@ See [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md).
 - Entity Framework Core migration-compatible persistence workflow
 - Angular
 - SQL Server local container
-- SQL Server vector type for exact document chunk search
+- SQL Server vector type for policy document chunk retrieval
 - Deterministic mock embeddings
 - GitHub REST API
 - POST-based SSE using `fetch + ReadableStream`
@@ -192,8 +197,10 @@ See [`docs/API_CONTRACTS.md`](docs/API_CONTRACTS.md).
 - .NET 10 SDK
 - Node.js and npm
 - Docker
-- SQL Server local container
+- SQL Server 2025 / 17.x compatible local container for `VECTOR(1536)`
 - Optional: `dotnet-ef` tool for EF Core migration commands
+
+> Local note: the demo schema uses SQL Server `VECTOR(1536)`, so a fresh local bootstrap should use a SQL Server 2025 / 17.x compatible container. SQL Server 2022 does not support the `VECTOR` column used by `PolicyChunks`.
 
 ### Build And Test
 
