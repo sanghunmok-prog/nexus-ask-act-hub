@@ -4,11 +4,15 @@ NEXUS is a .NET full-stack portfolio project that demonstrates how an AI-assiste
 
 The project is intentionally not a broad autonomous agent. It is a governed workflow system with clear service boundaries, safe database access, sanitized trace events, persisted approvals, checkpoints, and approval-gated GitHub issue creation.
 
-## Demo Video
+## Demo Preview
 
-[Watch the NEXUS portfolio demo](https://github.com/sanghunmok-prog/nexus-ask-act-hub/releases/tag/v1.0-demo)
+<p align="center">
+  <img src="docs/assets/nexus-hero-preview.gif" alt="NEXUS preview showing SQL data, policy document retrieval, approval-gated GitHub execution, and duplicate execution blocking" width="900">
+</p>
 
-This demo shows SQL + policy document answering, transparent trace events, safe one-time correction retry, approval-gated GitHub issue execution, and duplicate execution blocking.
+NEXUS combines **SQL data**, **policy document retrieval**, **transparent trace events**, and **approval-gated external actions** in one end-to-end workflow. The preview shows the core story: ask across internal data and documents, recover safely from a read-path error, approve an external action, execute it explicitly, and block duplicate execution.
+
+[Watch the full NEXUS portfolio demo](https://github.com/sanghunmok-prog/nexus-ask-act-hub/releases/tag/v1.0-demo)
 
 ## Key Features
 
@@ -17,13 +21,44 @@ This demo shows SQL + policy document answering, transparent trace events, safe 
 - **Bounded Recovery** — recoverable read-path schema errors can be corrected once, with at most two `db.query_readonly` attempts.
 - **Human-Gated Actions** — GitHub issue creation requires approval and a separate explicit execute action.
 - **Auditable Workflow State** — approval requests and agent checkpoints persist the action lifecycle.
-- **Sanitized Trace Timeline** — UI traces show tool names, sanitized arguments, durations, row counts, citation counts, and approval status without exposing secrets or chain-of-thought.
+- **Sanitized Trace Timeline** — UI traces show tool names, sanitized arguments, document results, loaded chunks, schema lookup, SQL rows, retry state, approval state, and assistant summary metrics without exposing secrets or chain-of-thought.
 - **Deterministic Local Demo** — `LLM_MODE=mock` keeps demos and tests stable without requiring live model credentials.
 
+## Demo Highlights
+
+### 1. SQL + Policy Document Answering
+
+<p align="center">
+  <img src="docs/assets/nexus-ask-sql-policy.gif" alt="NEXUS demo showing SQL rows and policy document citation in one answer" width="900">
+</p>
+
+NEXUS answers a business question by combining safe SQL reads with policy document retrieval. The trace shows `docs.search`, `docs.get_chunk`, schema lookup, `db.query_readonly`, and an assistant summary with SQL rows, document results, and citations.
+
+**Why it matters:** this demonstrates more than a chatbot response. The answer is grounded in structured operational data and retrieved policy context, with traceable intermediate steps.
+
+### 2. Safe One-Time Correction Retry
+
+<p align="center">
+  <img src="docs/assets/nexus-safe-correction-retry.gif" alt="NEXUS demo showing QUERY_VALIDATION_FAILED, tool.retry, and successful corrected query" width="900">
+</p>
+
+When the first read query has a schema mismatch, NEXUS surfaces the validation failure, corrects the structured query once, and retries safely. The retry budget is bounded, so the workflow does not loop forever.
+
+**Why it matters:** this shows defensive engineering. The system handles a recoverable read-path error without accepting raw SQL, hiding the failure, or retrying indefinitely.
+
+### 3. Approval-Gated GitHub Execution
+
+<p align="center">
+  <img src="docs/assets/nexus-approval-github-execution.gif" alt="NEXUS demo showing approval required, ready to execute, GitHub issue creation, and duplicate execution blocked" width="900">
+</p>
+
+GitHub issue creation is treated as an external write action. NEXUS creates an approval request first, moves the checkpoint to `ReadyToResume` after approval, executes only after an explicit user action, and blocks duplicate execution with `409 Conflict`.
+
+**Why it matters:** this is the core governance boundary. Approval is not execution, and completed actions cannot be executed again to create duplicate GitHub issues.
 
 ## Demo Flow
 
-The recommended README demo video flow is:
+The recommended demo flow is:
 
 1. **Ask** — `Which delayed orders are most at risk, and what policy applies?`
 2. **Recover** — `Which delayed orders need correction retry?`
@@ -31,7 +66,7 @@ The recommended README demo video flow is:
 4. **Execute** — approve the pending action, show that approval is not execution, explicitly execute it, then confirm the GitHub issue URL.
 5. **Guard** — retry the same execute request and show `409 Conflict`.
 
-See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for the ultra-compressed no-narration screen-recording plan.
+See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for the full recording script and command runbook.
 
 ## Architecture Overview
 
